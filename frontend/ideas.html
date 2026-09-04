@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dividend ideas · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="md-app">
+  <div class="page-loader" id="page-loader" hidden>
+    <div class="page-loader-card" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="page-loader-text">Loading dividend ideas…</p>
+    </div>
+  </div>
+
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
+      <a href="/ideas" class="active"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
+    </nav>
+
+    <header class="header">
+      <p class="eyebrow">Quality income shortlist</p>
+      <h1>Dividend ideas</h1>
+      <p class="lede">
+        A curated set of relatively lower-risk US and EU dividend payers with live
+        price, 6‑month change, and cash dividends paid each of the last five years.
+        Names you already hold appear in <strong>Owned</strong> with a green mark;
+        the rest stay in the Preview tables. Live data is checked every
+        <strong>15 minutes</strong> and the board every <strong>4 hours</strong> —
+        the tables update only when something actually changes.
+      </p>
+    </header>
+
+    <main class="layout layout-progress">
+      <section class="panel results-panel ideas-panel">
+        <div class="ideas-toolbar">
+          <p class="disclaimer" id="ideas-disclaimer"></p>
+          <div class="page-toolbar-actions">
+            <p class="page-status" id="ideas-status">Loading…</p>
+            <button type="button" class="refresh-btn" id="ideas-refresh-btn">
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+              <span class="refresh-btn-label">Refresh</span>
+            </button>
+          </div>
+        </div>
+        <div id="ideas-sections"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/auth.js"></script>
+  <script src="/static/prefetch.js"></script>
+  <script src="/static/ideas.js"></script>
+</body>
+</html>

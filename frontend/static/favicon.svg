@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Stock Buy Planner">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="4" x2="54" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1a3a32"/>
+      <stop offset="100%" stop-color="#0f1c1a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2b989"/>
+      <stop offset="100%" stop-color="#d4a373"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded mark -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bg)"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="15.25" fill="none" stroke="rgba(243,240,232,0.14)" stroke-width="1.5"/>
+
+  <!-- Ascending plan bars -->
+  <rect x="14" y="38" width="8" height="12" rx="2" fill="url(#bar)" opacity="0.72"/>
+  <rect x="26" y="30" width="8" height="20" rx="2" fill="url(#bar)" opacity="0.88"/>
+  <rect x="38" y="18" width="8" height="32" rx="2" fill="url(#bar)"/>
+
+  <!-- Dividend leaf / growth tip (unique curve, not a stock glyph) -->
+  <path
+    d="M46.5 16.5c4.8 1.2 8.2 5.2 8.8 10.2-4.6-.4-8.8-3.2-10.8-7.4-.4-1.4.4-2.8 2-2.8z"
+    fill="#7dcea0"
+  />
+  <path
+    d="M45.2 19.2c2.4 2.8 5.8 4.6 9.4 5.1"
+    fill="none"
+    stroke="#0f1c1a"
+    stroke-width="1.2"
+    stroke-linecap="round"
+    opacity="0.35"
+  />
+</svg>
