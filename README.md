@@ -17,13 +17,11 @@ Given a ticker (default **DTE.DE** / Deutsche Telekom), total shares, and a numb
 ## Run
 
 ```bash
-cd ~/IdeaProjects/stock-buy-planner
+cd ~/stock-planner
 source .venv/bin/activate
 cd backend
 uvicorn main:app --reload --port 8000
 ```
-
-Or: `bash run.sh`
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
