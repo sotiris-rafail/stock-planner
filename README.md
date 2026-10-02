@@ -16,7 +16,7 @@ Given a ticker (default **DTE.DE** / Deutsche Telekom), total shares, and a numb
 
 You need **Python 3.10+**, **pip**, and an internet connection (package install plus live quotes). The SQLite database at `data/portfolio.db` is created automatically on first start.
 
-Optional: config YAML files hold **keys** such as `${APP_SECRET_KEY}` and `${SMTP_HOST}`. Real values are loaded at runtime from `values.yml` (file) or an HTTP/cloud URL set in `properties.yml`. Run `python prepare_config.py` (or start the app) to create those files from the `*.yml.example` templates. Keep `APP_SECRET_KEY` stable, or existing accounts will not match after a restart.
+Optional: config YAML files hold **keys** such as `${APP_SECRET_KEY}` and `${SMTP_HOST}`. Real values are loaded at runtime from `values.yml` (file) or an HTTP/cloud URL set in `properties.yml`. Run `python prepare_config.py` (or start the app) to create those files with the dummy values below. Keep `APP_SECRET_KEY` stable, or existing accounts will not match after a restart.
 
 After the server is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create an account on **Sign in** (password: at least 10 characters, uppercase and lowercase, at least 2 digits that are not next to each other, at least 2 symbols). Stop the server with `Ctrl+C`.
 
@@ -63,7 +63,7 @@ After the server is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000)
    pip install -r requirements.txt
    ```
 
-6. Create config files from the examples (skipped if they already exist):
+6. Create dummy config files (skipped if they already exist):
 
    ```powershell
    python prepare_config.py
@@ -116,7 +116,7 @@ After the server is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000)
    pip install -r requirements.txt
    ```
 
-6. Create config files from the examples (skipped if they already exist):
+6. Create dummy config files (skipped if they already exist):
 
    ```bash
    python prepare_config.py
@@ -176,7 +176,7 @@ After the server is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000)
    pip install -r requirements.txt
    ```
 
-6. Create config files from the examples (skipped if they already exist):
+6. Create dummy config files (skipped if they already exist):
 
    ```bash
    python prepare_config.py
@@ -192,6 +192,58 @@ After the server is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000)
 8. Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser.
 
 ---
+
+## Configuration
+
+These files are gitignored. Copy the dummy contents below, or run `python prepare_config.py`.
+
+`application.yml` — keys only; values come from `values.yml` or HTTP:
+
+```yaml
+secret_key: ${APP_SECRET_KEY}
+
+# Silent background quote refresh interval in minutes.
+# Value is loaded from the property key cron_job_silent_stock_refresh (default 15).
+cron_job: ${cron_job_silent_stock_refresh}
+
+smtp:
+  host: ${SMTP_HOST}
+  port: ${SMTP_PORT}
+  from: ${SMTP_FROM}
+  user: ${SMTP_USER}
+  password: ${SMTP_PASSWORD}
+```
+
+`properties.yml` — choose local file or HTTP:
+
+```yaml
+# Local file: keys in application.yml are filled from values.yml
+provider:
+  type: file
+  file: values.yml
+
+# Cloud / HTTP: GET a JSON (or YAML) object of the same keys.
+# Uncomment this block and comment out the file provider above to use it.
+#
+# provider:
+#   type: http
+#   url: https://your-config-host/properties
+#   timeout: 15
+#   headers:
+#     Authorization: Bearer your-token
+```
+
+`values.yml` — dummy local values (replace before production):
+
+```yaml
+APP_SECRET_KEY: dummy-change-me-before-production
+SMTP_HOST: smtp.example.com
+SMTP_PORT: 587
+SMTP_FROM: noreply@example.com
+SMTP_USER: smtp-user
+SMTP_PASSWORD: dummy-smtp-password
+cron_job_silent_stock_refresh: 15
+```
 
 ## Pages
 

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import os
 import re
 import secrets
-from functools import lru_cache
 
 import bcrypt
 from cryptography.hazmat.primitives import padding
@@ -50,10 +48,10 @@ def validate_password(password: str) -> None:
         raise ValueError("Password must include at least 2 symbols")
 
 
-@lru_cache(maxsize=1)
 def _secret_key() -> bytes:
-    secret = os.environ.get("SBP_SECRET_KEY", "dev-change-me-before-production")
-    return hashlib.sha256(secret.encode("utf-8")).digest()
+    from settings import secret_key
+
+    return hashlib.sha256(secret_key().encode("utf-8")).digest()
 
 
 def encrypt_email(email: str) -> str:
@@ -66,6 +64,15 @@ def encrypt_email(email: str) -> str:
     encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
     ciphertext = encryptor.update(padded) + encryptor.finalize()
     return base64.urlsafe_b64encode(iv + ciphertext).decode("ascii")
+
+
+def decrypt_email(stored: str) -> str:
+    raw = base64.urlsafe_b64decode(stored.encode("ascii"))
+    iv, ciphertext = raw[:16], raw[16:]
+    decryptor = Cipher(algorithms.AES(_secret_key()), modes.CBC(iv)).decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = padding.PKCS7(128).unpadder()
+    return (unpadder.update(padded) + unpadder.finalize()).decode("utf-8")
 
 
 def emails_match(provided_email: str, stored_encrypted_email: str) -> bool:

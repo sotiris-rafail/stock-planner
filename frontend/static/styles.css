@@ -1488,6 +1488,15 @@ th.sortable-th.sorted {
   margin: 0;
 }
 
+.auth-extra {
+  margin: 0.75rem 0 0;
+  text-align: center;
+}
+
+.auth-extra a {
+  color: var(--gold);
+}
+
 .auth-page .header {
   text-align: center;
 }
@@ -1511,6 +1520,33 @@ th.sortable-th.sorted {
 .track-panel {
   display: grid;
   gap: 1rem;
+}
+
+.track-market + .track-market {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.track-market-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.9rem;
+}
+
+.track-market-heading h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.track-market-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .track-card-grid {
@@ -1765,5 +1801,218 @@ body.track-modal-open {
 
   .track-modal-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+.layout-notifications {
+  display: block;
+  width: min(640px, 100%);
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+.header-centered {
+  text-align: center;
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+.notifications-form {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+.notification-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--md-shape-corner-large);
+  box-shadow: var(--shadow-elev-2);
+  overflow: hidden;
+  animation: rise 0.7s ease both;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notification-card.is-enabled {
+  border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+  box-shadow:
+    var(--shadow-elev-2),
+    inset 0 1px 0 color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.notification-card-titlebar {
+  padding: 1rem 1.15rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-card-titlebar h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.notification-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.1rem 1.15rem;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.notification-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--gold-soft-bg);
+  border: 1px solid var(--gold-soft-border);
+  color: var(--gold);
+  flex-shrink: 0;
+  font-size: 1.35rem;
+}
+
+.notification-card-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-card-copy h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.notification-card-copy p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.notification-card-body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.15rem 1.15rem;
+  background: var(--md-sys-color-surface-container-high);
+  border-top: 1px solid var(--line);
+  transition: opacity 0.2s ease;
+}
+
+.notification-card:not(.is-enabled) .notification-card-body {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.notification-card-body label {
+  margin: 0;
+}
+
+.schedule-note {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--line);
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.schedule-note .material-symbols-outlined {
+  font-size: 1.05rem;
+  color: var(--gold);
+}
+
+.notifications-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
+.notifications-actions button {
+  margin-top: 0;
+  min-width: 11rem;
+}
+
+.notifications-form .ok,
+.notifications-form .error {
+  margin: 0;
+  text-align: center;
+}
+
+.switch-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.switch-wrap input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.switch-track {
+  position: relative;
+  display: block;
+  width: 3.1rem;
+  height: 1.85rem;
+  border-radius: var(--radius-full);
+  background: var(--md-sys-color-outline);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 0.22rem;
+  left: 0.22rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--md-sys-color-on-primary);
+  box-shadow: var(--shadow-elev-1);
+  transition: transform 0.2s ease;
+}
+
+.switch-wrap input:focus-visible + .switch-track {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 45%, transparent);
+}
+
+.switch-wrap input:checked + .switch-track {
+  background: color-mix(in srgb, var(--gold) 70%, var(--good));
+}
+
+.switch-wrap input:checked + .switch-track::after {
+  transform: translateX(1.25rem);
+}
+
+@media (max-width: 520px) {
+  .notification-card-head {
+    flex-wrap: wrap;
+  }
+
+  .switch-wrap {
+    margin-left: auto;
+  }
+
+  .notifications-actions {
+    justify-content: stretch;
+  }
+
+  .notifications-actions button {
+    width: 100%;
   }
 }

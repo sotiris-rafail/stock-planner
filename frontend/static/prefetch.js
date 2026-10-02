@@ -5,9 +5,21 @@
 (function (global) {
   const PREFIX = "sbp:cache:";
   const TTL_MS = 60 * 60 * 1000; // keep cached payload for up to 1 hour
-  const REFRESH_MS = 15 * 60 * 1000; // background refresher interval
-  const FRESH_MS = REFRESH_MS;
+  const DEFAULT_REFRESH_MINUTES = 15;
+  let refreshMinutes = DEFAULT_REFRESH_MINUTES;
   const MANUAL_REFRESH_LIMIT = 5;
+
+  function getRefreshMs() {
+    return refreshMinutes * 60 * 1000;
+  }
+
+  function getFreshMs() {
+    return getRefreshMs();
+  }
+
+  function refreshIntervalLabel() {
+    return `${refreshMinutes} minute${refreshMinutes === 1 ? "" : "s"}`;
+  }
 
   const KEYS = {
     progress: "progress",
@@ -125,7 +137,7 @@
     return entry ? Date.now() - entry.savedAt : null;
   }
 
-  function isFresh(key, maxAge = FRESH_MS) {
+  function isFresh(key, maxAge = getFreshMs()) {
     const age = ageMs(key);
     return age != null && age <= maxAge;
   }
@@ -160,6 +172,7 @@
     } catch {
       /* ignore quota / private mode */
     }
+    if (meta && meta.notify === false) return;
     notify(key, data, meta);
   }
 
@@ -184,7 +197,7 @@
   }
 
   function pruneManualRefreshTimes(times) {
-    const cutoff = Date.now() - REFRESH_MS;
+    const cutoff = Date.now() - getRefreshMs();
     return times.filter((t) => typeof t === "number" && t > cutoff);
   }
 
@@ -241,7 +254,7 @@
     if (!canManualRefresh(key)) {
       const quota = getManualRefreshQuota(key);
       const err = new Error(
-        `Refresh limit reached (${quota.limit} per 15 minutes). Try again later.`
+        `Refresh limit reached (${quota.limit} per ${refreshIntervalLabel()}). Try again later.`
       );
       err.code = "RATE_LIMITED";
       err.quota = quota;
@@ -266,13 +279,13 @@
       button.disabled = busy || quota.remaining === 0;
       button.title =
         quota.remaining > 0
-          ? `Refresh now (${quota.remaining} of ${quota.limit} left in 15 min)`
-          : `Refresh limit reached — ${quota.limit} per 15 minutes`;
+          ? `Refresh now (${quota.remaining} of ${quota.limit} left in ${refreshIntervalLabel()})`
+          : `Refresh limit reached — ${quota.limit} per ${refreshIntervalLabel()}`;
       button.setAttribute(
         "aria-label",
         quota.remaining > 0
           ? `Refresh (${quota.remaining} of ${quota.limit} remaining)`
-          : "Refresh limit reached for the next 15 minutes"
+          : `Refresh limit reached for the next ${refreshIntervalLabel()}`
       );
     }
 
@@ -347,7 +360,7 @@
       keys.push(KEYS.progress);
     }
     for (const key of keys) {
-      if (!isFresh(key, REFRESH_MS)) {
+      if (!isFresh(key, getRefreshMs())) {
         fetchAndCache(key, { reason }).catch(() => {});
       }
     }
@@ -357,14 +370,35 @@
     if (refreshTimer) return;
     refreshTimer = global.setInterval(() => {
       refreshStaleOrAll("interval");
-    }, REFRESH_MS);
+    }, getRefreshMs());
 
-    // Also refresh when the tab becomes visible again and data is older than 15 minutes.
+    // Also refresh when the tab becomes visible again and data is stale.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         refreshStaleOrAll("visibility");
       }
     });
+  }
+
+  async function loadRefreshConfig() {
+    try {
+      const res = await fetch("/api/config");
+      if (!res.ok) return;
+      const data = await res.json();
+      const minutes = Number(data.cron_job_silent_stock_refresh);
+      if (Number.isFinite(minutes) && minutes > 0) {
+        refreshMinutes = Math.round(minutes);
+      }
+    } catch {
+      /* keep default */
+    }
+  }
+
+  function applyRefreshMinutesToDom() {
+    const label = String(refreshMinutes);
+    for (const el of document.querySelectorAll("[data-sbp-refresh-minutes]")) {
+      el.textContent = label;
+    }
   }
 
   function onUpdate(key, fn) {
@@ -374,7 +408,9 @@
   }
 
   function boot() {
-    function runBoot() {
+    async function runBoot() {
+      await loadRefreshConfig();
+      applyRefreshMinutesToDom();
       fetchAndCache(KEYS.dividendIdeas, { reason: "boot" }).catch(() => {});
       fetchAndCache(KEYS.suggestions, { reason: "boot" }).catch(() => {});
       fetchAndCache(KEYS.watchlist, { reason: "boot" }).catch(() => {});
@@ -387,7 +423,9 @@
     if (global.SbpAuth?.whenAuthReady) {
       global.SbpAuth.whenAuthReady(runBoot);
     } else if (global.SbpAuth) {
-      global.addEventListener("sbp:auth-ready", runBoot, { once: true });
+      global.addEventListener("sbp:auth-ready", () => {
+        runBoot();
+      }, { once: true });
     } else {
       runBoot();
     }
@@ -401,9 +439,17 @@
 
   global.SbpCache = {
     KEYS,
-    REFRESH_MS,
+    DEFAULT_REFRESH_MINUTES,
+    get refreshMinutes() {
+      return refreshMinutes;
+    },
+    get REFRESH_MS() {
+      return getRefreshMs();
+    },
     TTL_MS,
     MANUAL_REFRESH_LIMIT,
+    getRefreshMs,
+    refreshIntervalLabel,
     get,
     set,
     ageMs,

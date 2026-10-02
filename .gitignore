@@ -6,3 +6,6 @@ __pycache__/
 data/
 *.db
 *.sh
+application.yml
+properties.yml
+values.yml

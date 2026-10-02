@@ -5,6 +5,7 @@ const authSubmitBtn = document.getElementById("auth-submit-btn");
 const authError = document.getElementById("auth-error");
 const tabLogin = document.getElementById("tab-login");
 const tabRegister = document.getElementById("tab-register");
+const forgotWrap = document.getElementById("forgot-wrap");
 
 let mode = "login";
 
@@ -20,6 +21,7 @@ function setMode(nextMode) {
   tabLogin?.classList.toggle("active", isLogin);
   tabRegister?.classList.toggle("active", !isLogin);
   if (authSubmitBtn) authSubmitBtn.textContent = isLogin ? "Sign in" : "Create account";
+  if (forgotWrap) forgotWrap.hidden = !isLogin;
   authPassword?.setAttribute(
     "autocomplete",
     isLogin ? "current-password" : "new-password"

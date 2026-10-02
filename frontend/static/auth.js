@@ -1,6 +1,6 @@
 (function (global) {
   const LOGIN_PATH = "/login";
-  const PROTECTED_PAGES = new Set(["/progress", "/track"]);
+  const PROTECTED_PAGES = new Set(["/progress", "/track", "/notifications"]);
   let authenticated = false;
   let authReady = false;
   const authReadyWaiters = [];

@@ -98,8 +98,92 @@ function stockIconHtml(symbol, { size = "md" } = {}) {
     </span>`;
 }
 
+const SUFFIX_MARKETS = {
+  DE: "Germany",
+  F: "Germany",
+  PA: "France",
+  AS: "Netherlands",
+  L: "United Kingdom",
+  SW: "Switzerland",
+  MI: "Italy",
+  MC: "Spain",
+  BR: "Belgium",
+  LS: "Portugal",
+  HE: "Finland",
+  OL: "Norway",
+  CO: "Denmark",
+  ST: "Sweden",
+  AT: "Greece",
+  IR: "Ireland",
+  TO: "Canada",
+  V: "Canada",
+  HK: "Hong Kong",
+  T: "Japan",
+  AX: "Australia",
+  NS: "India",
+  BO: "India",
+  SA: "Brazil",
+  MX: "Mexico",
+  SS: "China",
+  SZ: "China",
+};
+
+function inferMarketFromSymbol(symbol) {
+  const raw = (symbol || "").toUpperCase().trim();
+  if (!raw) return { market: "Other", market_label: "Other" };
+  if (raw.includes(".")) {
+    const suffix = raw.split(".").pop();
+    const market = SUFFIX_MARKETS[suffix] || suffix;
+    return { market, market_label: market };
+  }
+  return { market: "United States", market_label: "United States" };
+}
+
+function withMarket(item) {
+  const inferred = inferMarketFromSymbol(item?.requested_symbol || item?.symbol);
+  return { ...item, ...inferred };
+}
+
 function displayName(item) {
   return item.company_name || item.symbol;
+}
+
+function marketLabel(item) {
+  return withMarket(item).market_label;
+}
+
+function marketKey(item) {
+  return withMarket(item).market;
+}
+
+function sortKey(item) {
+  return `${displayName(item)}\u0000${item.symbol || ""}`.toLocaleLowerCase();
+}
+
+function compareItems(a, b) {
+  return sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: "base" });
+}
+
+function groupedTrackItems(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = marketKey(item);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: marketLabel(item),
+        items: [],
+      });
+    }
+    groups.get(key).items.push(item);
+  }
+  const ordered = [...groups.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+  );
+  for (const group of ordered) {
+    group.items.sort(compareItems);
+  }
+  return ordered;
 }
 
 function showFormError(message) {
@@ -173,6 +257,7 @@ function openTrackModal(itemId) {
         <p class="track-modal-symbol">${escapeHtml(item.symbol)}</p>
         ${requestedLine}
         <span class="type-pill">${escapeHtml(item.asset_type_label || "—")}</span>
+        <p class="sub">${escapeHtml(marketLabel(item))}</p>
       </div>
     </header>
     ${errorLine}
@@ -228,7 +313,7 @@ function renderTrackPayload(data) {
   }
   updateTrackStatus(data);
 
-  trackItems = data.items || [];
+  trackItems = (data.items || []).map(withMarket);
   trackIsGuest = Boolean(data.guest) || !(window.SbpAuth?.isAuthenticated?.() ?? false);
 
   if (!trackItems.length) {
@@ -238,11 +323,134 @@ function renderTrackPayload(data) {
     return;
   }
 
-  trackContent.innerHTML = `
-    <div class="track-card-grid">
-      ${trackItems.map((item) => renderTrackCard(item)).join("")}
-    </div>
-  `;
+  const groups = groupedTrackItems(trackItems);
+  trackContent.innerHTML = groups
+    .map(
+      (group) => `
+        <section class="track-market" data-track-market="${escapeHtml(group.key)}">
+          <div class="track-market-heading">
+            <h3>${escapeHtml(group.label)}</h3>
+            <p class="track-market-meta">${group.items.length} symbol${group.items.length === 1 ? "" : "s"}</p>
+          </div>
+          <div class="track-card-grid">
+            ${group.items.map((item) => renderTrackCard(item)).join("")}
+          </div>
+        </section>
+      `
+    )
+    .join("");
+}
+
+function upsertLocalWatchlistItem(item) {
+  const next = trackItems.filter((row) => String(row.id) !== String(item.id));
+  next.push(withMarket(item));
+  trackItems = next;
+  const cached = window.SbpCache?.get?.(window.SbpCache.KEYS.watchlist) || {};
+  const payload = {
+    ...cached,
+    count: trackItems.length,
+    items: sortLocalItems(trackItems),
+    as_of: new Date().toISOString(),
+    guest: false,
+    disclaimer: cached.disclaimer || trackDisclaimer?.textContent || "",
+  };
+  window.SbpCache?.set?.(window.SbpCache.KEYS.watchlist, payload, { notify: false });
+  updateTrackStatus(payload);
+  if (trackDisclaimer && payload.disclaimer) {
+    trackDisclaimer.textContent = payload.disclaimer;
+  }
+  insertTrackCard(item);
+}
+
+function insertTrackCard(item) {
+  if (!trackContent) return;
+  if (!trackContent.querySelector(".track-market")) {
+    renderTrackPayload({
+      items: trackItems,
+      count: trackItems.length,
+      guest: false,
+      disclaimer: trackDisclaimer?.textContent || "",
+      as_of: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const key = marketKey(item);
+  const label = marketLabel(item);
+  let section = [...trackContent.querySelectorAll(".track-market")].find(
+    (node) => node.getAttribute("data-track-market") === key
+  );
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "track-market";
+    section.setAttribute("data-track-market", key);
+    section.innerHTML = `
+      <div class="track-market-heading">
+        <h3>${escapeHtml(label)}</h3>
+        <p class="track-market-meta">0 symbols</p>
+      </div>
+      <div class="track-card-grid"></div>
+    `;
+    const sections = [...trackContent.querySelectorAll(".track-market")];
+    const after = sections.find(
+      (node) =>
+        (node.querySelector("h3")?.textContent || "").localeCompare(label, undefined, {
+          sensitivity: "base",
+        }) > 0
+    );
+    if (after) trackContent.insertBefore(section, after);
+    else trackContent.appendChild(section);
+  }
+
+  const grid = section.querySelector(".track-card-grid");
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = renderTrackCard(item).trim();
+  const card = wrapper.firstElementChild;
+  const existing = grid.querySelector(`[data-track-id="${item.id}"]`);
+  existing?.remove();
+
+  const siblings = [...grid.querySelectorAll(".track-card")];
+  const name = sortKey(item);
+  const before = siblings.find((node) => {
+    const other = trackItems.find((row) => String(row.id) === node.getAttribute("data-track-id"));
+    return other ? sortKey(other).localeCompare(name, undefined, { sensitivity: "base" }) > 0 : false;
+  });
+  if (before) grid.insertBefore(card, before);
+  else grid.appendChild(card);
+
+  const count = grid.querySelectorAll(".track-card").length;
+  const meta = section.querySelector(".track-market-meta");
+  if (meta) meta.textContent = `${count} symbol${count === 1 ? "" : "s"}`;
+}
+
+function sortLocalItems(items) {
+  return [...items].sort((a, b) => {
+    const market = marketLabel(a).localeCompare(marketLabel(b), undefined, {
+      sensitivity: "base",
+    });
+    if (market !== 0) return market;
+    return compareItems(a, b);
+  });
+}
+
+function removeLocalWatchlistItem(id) {
+  trackItems = trackItems.filter((row) => String(row.id) !== String(id));
+  const cached = window.SbpCache?.get?.(window.SbpCache.KEYS.watchlist) || {};
+  window.SbpCache?.set?.(window.SbpCache.KEYS.watchlist, {
+    ...cached,
+    count: trackItems.length,
+    items: trackItems,
+    as_of: new Date().toISOString(),
+    guest: false,
+  }, { notify: false });
+  renderTrackPayload({
+    ...cached,
+    count: trackItems.length,
+    items: trackItems,
+    guest: false,
+    disclaimer: cached.disclaimer || trackDisclaimer?.textContent || "",
+    as_of: new Date().toISOString(),
+  });
 }
 
 async function reloadWatchlist({ reason = "page" } = {}) {
@@ -304,8 +512,7 @@ async function removeWatchlistItem(id) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Remove failed");
     closeTrackModal();
-    window.SbpCache.invalidate(window.SbpCache.KEYS.watchlist);
-    await reloadWatchlist({ reason: "remove" });
+    removeLocalWatchlistItem(id);
   } catch (err) {
     showFormError(err.message || "Remove failed");
   }
@@ -344,9 +551,8 @@ trackForm?.addEventListener("submit", async (event) => {
 
     trackSymbol.value = "";
     trackType.value = "";
-    showFormOk(`Added ${data.symbol} at ${money(data.price_at_add, data.currency)}.`);
-    window.SbpCache.invalidate(window.SbpCache.KEYS.watchlist);
-    await reloadWatchlist({ reason: "add" });
+    showFormOk(`Added ${data.symbol} at ${money(data.live_price ?? data.price_at_add, data.currency)}.`);
+    upsertLocalWatchlistItem(data);
   } catch (err) {
     showFormError(err.message || "Could not add symbol");
   } finally {

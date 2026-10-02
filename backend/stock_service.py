@@ -9,6 +9,7 @@ import yfinance as yf
 
 from dividends import DividendInfo, fetch_dividend_info
 from symbol_resolver import candidate_symbols
+from yf_limit import yfinance_slot
 
 
 @dataclass
@@ -59,15 +60,16 @@ def _extract_price(info: dict, ticker: yf.Ticker) -> tuple[float | None, float |
 
 
 def _load_ticker(symbol: str) -> tuple[yf.Ticker, dict, float, float | None] | None:
-    ticker = yf.Ticker(symbol)
-    try:
-        info = ticker.info or {}
-    except Exception:
-        info = {}
-    price, previous_close = _extract_price(info, ticker)
-    if price is None:
-        return None
-    return ticker, info, price, previous_close
+    with yfinance_slot():
+        ticker = yf.Ticker(symbol)
+        try:
+            info = ticker.info or {}
+        except Exception:
+            info = {}
+        price, previous_close = _extract_price(info, ticker)
+        if price is None:
+            return None
+        return ticker, info, price, previous_close
 
 
 def resolve_tradable_symbol(symbol: str) -> tuple[str, yf.Ticker, dict, float, float | None]:

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notifications · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="md-app">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
+      <a href="/notifications" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
+    </nav>
+
+    <header class="header header-centered">
+      <p class="eyebrow">Email alerts</p>
+      <h1>Notifications</h1>
+      <p class="lede">
+        Get a monthly snapshot of your Progress holdings by email.
+      </p>
+    </header>
+
+    <main class="layout layout-notifications">
+      <form id="notifications-form" class="notifications-form">
+        <article class="notification-card" id="monthly-report-card">
+          <header class="notification-card-titlebar">
+            <h2>Monthly report</h2>
+          </header>
+
+          <div class="notification-card-head">
+            <span class="notification-icon material-symbols-outlined" aria-hidden="true">calendar_month</span>
+            <div class="notification-card-copy">
+              <h3>Enable monthly report</h3>
+              <p>Same holdings and totals as your Progress page, delivered by email.</p>
+            </div>
+            <label class="switch-wrap" for="monthly-report-toggle">
+              <input id="monthly-report-toggle" type="checkbox" role="switch" aria-describedby="monthly-report-hint" />
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+
+          <div class="notification-card-body" id="monthly-report-body">
+            <label for="report-email">
+              Delivery email
+              <input
+                id="report-email"
+                name="report_email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@example.com"
+              />
+            </label>
+            <p class="hint" id="monthly-report-hint">
+              Leave blank to use your account email.
+            </p>
+            <p class="schedule-note">
+              <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+              Sent on the 1st of each month at midnight.
+            </p>
+          </div>
+        </article>
+
+        <div class="notifications-actions">
+          <button type="submit" id="notifications-save-btn">Save preferences</button>
+        </div>
+
+        <p id="notifications-status" class="ok" hidden></p>
+        <p id="notifications-error" class="error" hidden></p>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/auth.js"></script>
+  <script src="/static/notifications.js"></script>
+</body>
+</html>

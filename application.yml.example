@@ -1,0 +1,12 @@
+secret_key: ${APP_SECRET_KEY}
+
+# Silent background quote refresh interval in minutes.
+# Value is loaded from the property key cron_job_silent_stock_refresh (default 15).
+cron_job: ${cron_job_silent_stock_refresh}
+
+smtp:
+  host: ${SMTP_HOST}
+  port: ${SMTP_PORT}
+  from: ${SMTP_FROM}
+  user: ${SMTP_USER}
+  password: ${SMTP_PASSWORD}

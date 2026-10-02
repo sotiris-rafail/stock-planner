@@ -10,7 +10,16 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from auth import SESSION_COOKIE, SESSION_DAYS, authenticate_user, create_session_token, register_user
+from auth import (
+    SESSION_COOKIE,
+    SESSION_DAYS,
+    authenticate_user,
+    create_session_token,
+    register_user,
+    request_password_reset,
+    reset_password_with_hash,
+)
+from auth_crypto import decrypt_email, validate_email
 from deps import get_optional_user_id, require_user_id
 
 from calculator import calculate_buy_plan, result_to_dict
@@ -19,6 +28,8 @@ from db import (
     clear_dividend_ideas_cache,
     delete_purchase,
     execute_sale,
+    get_notification_settings,
+    get_user_by_id,
     init_db,
     list_positions,
     list_purchases,
@@ -27,6 +38,7 @@ from db import (
     list_transactions_page,
     owned_shares,
     today_iso,
+    upsert_notification_settings,
 )
 from portfolio import build_progress, build_progress_summary
 from pricing_rules import (
@@ -38,6 +50,10 @@ from dividend_ideas import build_dividend_ideas
 from suggestions import build_suggestions
 from stock_service import fetch_dividends, fetch_quote
 from watchlist import ASSET_TYPES, build_watchlist, create_watchlist_entry, remove_watchlist_entry
+from app_logging import setup_logging
+from settings import prepare_config_files, silent_stock_refresh_minutes
+from properties import load_property_map
+from scheduler import start_scheduler, stop_scheduler
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -50,12 +66,35 @@ app = FastAPI(
 
 @app.on_event("startup")
 def on_startup() -> None:
+    setup_logging()
+    prepare_config_files()
+    load_property_map()
     init_db()
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    stop_scheduler()
 
 
 class AuthRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=10, max_length=128)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ResetPasswordRequest(BaseModel):
+    hash: str = Field(min_length=16, max_length=128)
+    password: str = Field(min_length=10, max_length=128)
+
+
+class NotificationSettingsRequest(BaseModel):
+    monthly_report_enabled: bool = False
+    report_email: str = Field(default="", max_length=254)
 
 
 def _set_session_cookie(response: Response, user_id: int) -> None:
@@ -211,6 +250,12 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/config")
+def app_config():
+    minutes = silent_stock_refresh_minutes()
+    return {"cron_job_silent_stock_refresh": minutes}
+
+
 @app.post("/api/auth/register")
 def register(body: AuthRequest, response: Response):
     try:
@@ -248,6 +293,27 @@ def auth_refresh(response: Response, user_id: int = Depends(require_user_id)):
     """Issue a new session cookie for an already-authenticated user."""
     _set_session_cookie(response, user_id)
     return {"ok": True, "authenticated": True}
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, request: Request):
+    try:
+        base = str(request.base_url).rstrip("/")
+        request_password_reset(email=body.email, base_url=base)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not send reset email: {exc}") from exc
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordRequest):
+    try:
+        reset_password_with_hash(reset_hash=body.hash, password=body.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @app.get("/api/quote/{symbol}")
@@ -543,6 +609,66 @@ def progress(symbol: str | None = None, user_id: int = Depends(require_user_id))
     return payload
 
 
+@app.get("/api/notifications/settings")
+def get_notifications_settings(user_id: int = Depends(require_user_id)):
+    settings = get_notification_settings(user_id=user_id)
+    user = get_user_by_id(user_id)
+    account_email = ""
+    if user:
+        try:
+            account_email = decrypt_email(user["email_encrypted"])
+        except Exception:
+            account_email = ""
+    return {
+        "monthly_report_enabled": settings["monthly_report_enabled"],
+        "report_email": settings["report_email"],
+        "account_email": account_email,
+        "last_sent_month": settings.get("last_sent_month"),
+    }
+
+
+@app.put("/api/notifications/settings")
+def update_notifications_settings(
+    body: NotificationSettingsRequest,
+    user_id: int = Depends(require_user_id),
+):
+    report_email = body.report_email.strip()
+    if body.monthly_report_enabled:
+        if not report_email:
+            user = get_user_by_id(user_id)
+            if user:
+                try:
+                    report_email = decrypt_email(user["email_encrypted"])
+                except Exception:
+                    report_email = ""
+        if not report_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Enter an email address to receive monthly reports",
+            )
+        try:
+            report_email = validate_email(report_email)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif report_email:
+        try:
+            report_email = validate_email(report_email)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    saved = upsert_notification_settings(
+        user_id=user_id,
+        monthly_report_enabled=body.monthly_report_enabled,
+        report_email=report_email,
+    )
+    return {
+        "monthly_report_enabled": saved["monthly_report_enabled"],
+        "report_email": saved["report_email"],
+        "last_sent_month": saved.get("last_sent_month"),
+        "ok": True,
+    }
+
+
 @app.get("/api/dividend-ideas")
 def dividend_ideas(request: Request):
     try:
@@ -658,11 +784,37 @@ def track_page(request: Request):
     return FileResponse(path)
 
 
+@app.get("/notifications")
+def notifications_page(request: Request):
+    if get_optional_user_id(request) is None:
+        return RedirectResponse(url="/login?next=%2Fnotifications", status_code=302)
+    path = FRONTEND_DIR / "notifications.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Notifications page not found")
+    return FileResponse(path)
+
+
 @app.get("/login")
 def login_page():
     path = FRONTEND_DIR / "login.html"
     if not path.exists():
         raise HTTPException(status_code=500, detail="Login page not found")
+    return FileResponse(path)
+
+
+@app.get("/forgot-password")
+def forgot_password_page():
+    path = FRONTEND_DIR / "forgot-password.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Forgot password page not found")
+    return FileResponse(path)
+
+
+@app.get("/reset-password")
+def reset_password_page():
+    path = FRONTEND_DIR / "reset-password.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Reset password page not found")
     return FileResponse(path)
 
 

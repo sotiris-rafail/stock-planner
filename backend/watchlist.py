@@ -19,6 +19,37 @@ _QUOTE_TYPE_MAP = {
     "MUTUALFUND": "mutual_fund",
 }
 
+# Yahoo suffixes → listing market when country/exchange metadata is missing.
+_SUFFIX_MARKETS = {
+    "DE": "Germany",
+    "F": "Germany",
+    "PA": "France",
+    "AS": "Netherlands",
+    "L": "United Kingdom",
+    "SW": "Switzerland",
+    "MI": "Italy",
+    "MC": "Spain",
+    "BR": "Belgium",
+    "LS": "Portugal",
+    "HE": "Finland",
+    "OL": "Norway",
+    "CO": "Denmark",
+    "ST": "Sweden",
+    "AT": "Greece",
+    "IR": "Ireland",
+    "TO": "Canada",
+    "V": "Canada",
+    "HK": "Hong Kong",
+    "T": "Japan",
+    "AX": "Australia",
+    "NS": "India",
+    "BO": "India",
+    "SA": "Brazil",
+    "MX": "Mexico",
+    "SS": "China",
+    "SZ": "China",
+}
+
 
 def _safe_float(value: Any) -> float | None:
     if value is None:
@@ -101,6 +132,76 @@ def asset_type_label(asset_type: str) -> str:
     return labels.get(asset_type, asset_type.replace("_", " ").title())
 
 
+_US_EXCHANGES = {
+    "NMS",
+    "NCM",
+    "NGM",
+    "NYQ",
+    "NYE",
+    "ASE",
+    "AMX",
+    "PCX",
+    "BTS",
+    "NASDAQ",
+    "NASDAQGS",
+    "NASDAQGM",
+    "NASDAQCM",
+    "NYSE",
+    "NYSEARCA",
+    "NYSEMKT",
+    "AMEX",
+    "BATS",
+    "CBOE",
+    "OTC",
+    "PNK",
+    "OTCBB",
+    "OTCQX",
+    "OTCQB",
+}
+
+
+def _normalize_exchange(exchange: str) -> str:
+    return (
+        exchange.upper()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace(".", "")
+    )
+
+
+def infer_market(*, symbol: str, info: dict | None = None) -> dict[str, str]:
+    """Group by listing venue (where the ticker trades), not company nationality."""
+    info = info or {}
+    raw = (symbol or "").upper().strip()
+    if "." in raw:
+        suffix = raw.rsplit(".", 1)[-1]
+        market = _SUFFIX_MARKETS.get(suffix, suffix)
+        return {"market": market, "market_label": market}
+
+    exchange = str(
+        info.get("fullExchangeName")
+        or info.get("exchangeName")
+        or info.get("exchange")
+        or ""
+    ).strip()
+    compact = _normalize_exchange(exchange)
+    if compact in _US_EXCHANGES or compact.startswith("NASDAQ") or compact.startswith("NYSE"):
+        return {"market": "United States", "market_label": "United States"}
+
+    return {"market": "United States", "market_label": "United States"}
+
+
+def sort_watchlist_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        items,
+        key=lambda row: (
+            (row.get("market") or "Other").casefold(),
+            (row.get("company_name") or row.get("symbol") or "").casefold(),
+            (row.get("symbol") or "").casefold(),
+        ),
+    )
+
+
 def create_watchlist_entry(
     *,
     user_id: int,
@@ -130,43 +231,69 @@ def create_watchlist_entry(
         added_at=added_at,
         price_at_add=round(float(price), 4),
     )
-    return row
+    return _enrich_from_quote(
+        row,
+        resolved=resolved,
+        ticker=ticker,
+        info=info,
+        price=float(price),
+    )
+
+
+def _enrich_from_quote(
+    row: dict[str, Any],
+    *,
+    resolved: str,
+    ticker: yf.Ticker,
+    info: dict,
+    price: float | None,
+) -> dict[str, Any]:
+    if price is None:
+        hist = ticker.history(period="5d", auto_adjust=True)
+        if hist is not None and not hist.empty:
+            price = _safe_float(hist["Close"].iloc[-1])
+
+    display_name = (
+        info.get("shortName")
+        or info.get("longName")
+        or row.get("company_name")
+        or resolved
+    )
+    currency = (info.get("currency") or row.get("currency") or "USD").upper()
+    live_price = round(float(price), 4) if price is not None else None
+    price_at_add = _safe_float(row.get("price_at_add"))
+    changes = _period_changes(ticker, live_price)
+    market = infer_market(symbol=resolved, info=info)
+
+    return {
+        **row,
+        "symbol": resolved,
+        "company_name": display_name,
+        "currency": currency,
+        "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
+        "live_price": live_price,
+        "price_at_add": price_at_add,
+        "change_since_added_pct": _pct_change(price_at_add, live_price),
+        **market,
+        **changes,
+        "error": None,
+    }
 
 
 def _enrich_row(row: dict[str, Any]) -> dict[str, Any]:
     symbol = row["symbol"]
     try:
         resolved, ticker, info, price, _previous = resolve_tradable_symbol(symbol)
-        if price is None:
-            hist = ticker.history(period="5d", auto_adjust=True)
-            if hist is not None and not hist.empty:
-                price = _safe_float(hist["Close"].iloc[-1])
-
-        display_name = (
-            info.get("shortName")
-            or info.get("longName")
-            or row.get("company_name")
-            or symbol
+        return _enrich_from_quote(
+            row,
+            resolved=resolved,
+            ticker=ticker,
+            info=info,
+            price=price,
         )
-        currency = (info.get("currency") or row.get("currency") or "USD").upper()
-        live_price = round(float(price), 4) if price is not None else None
-        price_at_add = _safe_float(row.get("price_at_add"))
-        changes = _period_changes(ticker, live_price)
-
-        return {
-            **row,
-            "symbol": resolved,
-            "company_name": display_name,
-            "currency": currency,
-            "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
-            "live_price": live_price,
-            "price_at_add": price_at_add,
-            "change_since_added_pct": _pct_change(price_at_add, live_price),
-            **changes,
-            "error": None,
-        }
     except Exception as exc:
         price_at_add = _safe_float(row.get("price_at_add"))
+        market = infer_market(symbol=symbol, info={})
         return {
             **row,
             "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
@@ -176,6 +303,7 @@ def _enrich_row(row: dict[str, Any]) -> dict[str, Any]:
             "change_1m_pct": None,
             "change_6m_pct": None,
             "change_1y_pct": None,
+            **market,
             "error": str(exc),
         }
 
@@ -190,7 +318,7 @@ def build_watchlist(*, user_id: int) -> dict[str, Any]:
             for future in as_completed(futures):
                 items.append(future.result())
 
-        items.sort(key=lambda row: row.get("added_at", ""), reverse=True)
+        items = sort_watchlist_items(items)
 
     now = datetime.now(timezone.utc)
     return {

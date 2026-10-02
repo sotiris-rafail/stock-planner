@@ -3,19 +3,58 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DB_PATH = DATA_DIR / "portfolio.db"
 
+_DB_LOCK = threading.RLock()
+_DB_CONN: sqlite3.Connection | None = None
 
-def _connect() -> sqlite3.Connection:
+
+def _open_conn() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _get_conn() -> sqlite3.Connection:
+    global _DB_CONN
+    if _DB_CONN is None:
+        _DB_CONN = _open_conn()
+    return _DB_CONN
+
+
+@contextmanager
+def _connect() -> Iterator[sqlite3.Connection]:
+    """Reuse one SQLite connection so each request does not leak a file descriptor."""
+    global _DB_CONN
+    with _DB_LOCK:
+        try:
+            conn = _get_conn()
+            yield conn
+            conn.commit()
+        except Exception:
+            if _DB_CONN is not None:
+                try:
+                    _DB_CONN.rollback()
+                except Exception:
+                    pass
+            raise
+
+
+def close_db() -> None:
+    global _DB_CONN
+    with _DB_LOCK:
+        if _DB_CONN is not None:
+            _DB_CONN.close()
+            _DB_CONN = None
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -177,6 +216,17 @@ def _migrate_user_scope(conn: sqlite3.Connection) -> None:
             """
         )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_settings (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            monthly_report_enabled INTEGER NOT NULL DEFAULT 0,
+            report_email TEXT NOT NULL DEFAULT '',
+            last_sent_month TEXT
+        )
+        """
+    )
+
 
 def create_user(*, email_encrypted: str, password_hash: str) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
@@ -211,6 +261,27 @@ def get_user_by_encrypted_email(email_encrypted: str) -> dict | None:
             (email_encrypted,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def list_users() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, email_encrypted, password_hash, created_at
+            FROM users
+            ORDER BY id
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_user_password(*, user_id: int, password_hash: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id),
+        )
+        return cur.rowcount > 0
 
 
 def add_purchase(
@@ -771,3 +842,72 @@ def delete_watchlist_item(item_id: int, *, user_id: int) -> bool:
             (item_id, user_id),
         )
     return cur.rowcount > 0
+
+
+def get_notification_settings(*, user_id: int) -> dict:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT monthly_report_enabled, report_email, last_sent_month
+            FROM notification_settings
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return {
+            "monthly_report_enabled": False,
+            "report_email": "",
+            "last_sent_month": None,
+        }
+    return {
+        "monthly_report_enabled": bool(row["monthly_report_enabled"]),
+        "report_email": row["report_email"] or "",
+        "last_sent_month": row["last_sent_month"],
+    }
+
+
+def upsert_notification_settings(
+    *,
+    user_id: int,
+    monthly_report_enabled: bool,
+    report_email: str,
+) -> dict:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO notification_settings (
+                user_id, monthly_report_enabled, report_email, last_sent_month
+            )
+            VALUES (?, ?, ?, NULL)
+            ON CONFLICT(user_id) DO UPDATE SET
+                monthly_report_enabled = excluded.monthly_report_enabled,
+                report_email = excluded.report_email
+            """,
+            (user_id, 1 if monthly_report_enabled else 0, report_email),
+        )
+    return get_notification_settings(user_id=user_id)
+
+
+def mark_monthly_report_sent(*, user_id: int, month_key: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE notification_settings
+            SET last_sent_month = ?
+            WHERE user_id = ?
+            """,
+            (month_key, user_id),
+        )
+
+
+def list_users_with_monthly_report_enabled() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT user_id, report_email, last_sent_month
+            FROM notification_settings
+            WHERE monthly_report_enabled = 1
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]

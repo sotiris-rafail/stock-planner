@@ -26,6 +26,7 @@
       <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
       <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
       <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
+      <a href="/notifications" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
     </nav>
 
     <header class="header">
@@ -92,7 +93,7 @@
       <div class="stack">
         <section class="panel results-panel">
           <div class="ideas-toolbar">
-            <p class="disclaimer">Live prices refresh every 15 minutes in the background.</p>
+            <p class="disclaimer">Live prices refresh every <span data-sbp-refresh-minutes>15</span> minutes in the background.</p>
             <div class="page-toolbar-actions">
               <p class="page-status" id="progress-status">Loading…</p>
               <button type="button" class="refresh-btn" id="progress-refresh-btn">

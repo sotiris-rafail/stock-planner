@@ -16,6 +16,8 @@ from urllib.request import Request, urlopen
 import yfinance as yf
 
 from db import get_suggestion_cache, save_suggestion_cache
+from settings import silent_stock_refresh_minutes
+from yf_limit import yfinance_slot
 from suggestion_sources import (
     LIST_SOURCES,
     etf_candidates,
@@ -29,7 +31,6 @@ from suggestion_sources import (
 )
 
 SYMBOL_REFRESH_HOURS = 4
-QUOTE_REFRESH_MINUTES = 15
 STOCK_PICKS_US = 50
 STOCK_PICKS_EU = 30
 ETF_PICKS = 30
@@ -133,57 +134,58 @@ def _fetch_stooq_history_change(stooq_symbol: str, days: int = 183) -> float | N
 
 
 def _yahoo_metrics(symbol: str) -> dict[str, Any]:
-    ticker = yf.Ticker(symbol)
-    try:
-        info = ticker.info or {}
-    except Exception:
-        info = {}
+    with yfinance_slot():
+        ticker = yf.Ticker(symbol)
+        try:
+            info = ticker.info or {}
+        except Exception:
+            info = {}
 
-    price = (
-        _safe_float(info.get("regularMarketPrice"))
-        or _safe_float(info.get("currentPrice"))
-        or _safe_float(info.get("previousClose"))
-    )
-    currency = info.get("currency")
-    yield_pct = _safe_float(info.get("dividendYield"))
-    if yield_pct is not None and yield_pct < 1:
-        yield_pct *= 100.0
+        price = (
+            _safe_float(info.get("regularMarketPrice"))
+            or _safe_float(info.get("currentPrice"))
+            or _safe_float(info.get("previousClose"))
+        )
+        currency = info.get("currency")
+        yield_pct = _safe_float(info.get("dividendYield"))
+        if yield_pct is not None and yield_pct < 1:
+            yield_pct *= 100.0
 
-    expense = _safe_float(info.get("annualReportExpenseRatio"))
-    if expense is not None and expense < 1:
-        expense *= 100.0
-    if expense is None:
-        expense = _safe_float(info.get("netExpenseRatio"))
+        expense = _safe_float(info.get("annualReportExpenseRatio"))
         if expense is not None and expense < 1:
             expense *= 100.0
+        if expense is None:
+            expense = _safe_float(info.get("netExpenseRatio"))
+            if expense is not None and expense < 1:
+                expense *= 100.0
 
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=183)
-    hist = ticker.history(start=start.strftime("%Y-%m-%d"), auto_adjust=True)
-    change_6m_pct = None
-    if hist is not None and not hist.empty:
-        closes = hist["Close"].dropna()
-        if len(closes) >= 2:
-            p0 = float(closes.iloc[0])
-            p1 = float(closes.iloc[-1])
-            if p0:
-                change_6m_pct = (p1 / p0 - 1.0) * 100.0
-            if price is None:
-                price = p1
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=183)
+        hist = ticker.history(start=start.strftime("%Y-%m-%d"), auto_adjust=True)
+        change_6m_pct = None
+        if hist is not None and not hist.empty:
+            closes = hist["Close"].dropna()
+            if len(closes) >= 2:
+                p0 = float(closes.iloc[0])
+                p1 = float(closes.iloc[-1])
+                if p0:
+                    change_6m_pct = (p1 / p0 - 1.0) * 100.0
+                if price is None:
+                    price = p1
 
-    currency, price = _normalize_currency(currency, price)
-    return {
-        "price": price,
-        "currency": currency,
-        "change_6m_pct": change_6m_pct,
-        "dividend_yield_pct": yield_pct,
-        "expense_ratio_pct": expense,
-        "display_name": info.get("shortName") or info.get("longName"),
-        "market_cap": _safe_float(info.get("marketCap")),
-        "total_assets": _safe_float(info.get("totalAssets")),
-        "avg_volume": _safe_float(info.get("averageVolume")),
-        "price_source": "yahoo",
-    }
+        currency, price = _normalize_currency(currency, price)
+        return {
+            "price": price,
+            "currency": currency,
+            "change_6m_pct": change_6m_pct,
+            "dividend_yield_pct": yield_pct,
+            "expense_ratio_pct": expense,
+            "display_name": info.get("shortName") or info.get("longName"),
+            "market_cap": _safe_float(info.get("marketCap")),
+            "total_assets": _safe_float(info.get("totalAssets")),
+            "avg_volume": _safe_float(info.get("averageVolume")),
+            "price_source": "yahoo",
+        }
 
 
 def _merge_quote(symbol: str, yahoo: dict[str, Any]) -> dict[str, Any]:
@@ -387,7 +389,8 @@ def _build_payload(
         }
 
     next_symbols = symbols_updated_at + timedelta(hours=SYMBOL_REFRESH_HOURS)
-    next_quotes = quotes_updated_at + timedelta(minutes=QUOTE_REFRESH_MINUTES)
+    quote_refresh_minutes = silent_stock_refresh_minutes()
+    next_quotes = quotes_updated_at + timedelta(minutes=quote_refresh_minutes)
 
     return {
         "as_of": quotes_updated_at.isoformat(),
@@ -396,7 +399,7 @@ def _build_payload(
         "next_symbols_refresh_at": next_symbols.isoformat(),
         "next_quotes_refresh_at": next_quotes.isoformat(),
         "symbol_refresh_hours": SYMBOL_REFRESH_HOURS,
-        "quote_refresh_minutes": QUOTE_REFRESH_MINUTES,
+        "quote_refresh_minutes": quote_refresh_minutes,
         "dynamic": True,
         "list_sources": list(LIST_SOURCES),
         "data_sources": list(DATA_SOURCES),
@@ -404,7 +407,7 @@ def _build_payload(
             "Suggestions are rebuilt from live index constituents (Wikipedia) and "
             "provider fund universes, then ranked by market data every "
             f"{SYMBOL_REFRESH_HOURS} hours. Quotes refresh about every "
-            f"{QUOTE_REFRESH_MINUTES} minutes from Yahoo Finance with Stooq fallback. "
+            f"{quote_refresh_minutes} minutes from Yahoo Finance with Stooq fallback. "
             "Not investment advice."
         ),
         "tabs": tabs,
@@ -468,7 +471,8 @@ def build_suggestions(*, force: bool = False) -> dict[str, Any]:
                 (now - quotes_at).total_seconds() / 60 if quotes_at else 999
             )
 
-            if symbols_age_h < SYMBOL_REFRESH_HOURS and quotes_age_m < QUOTE_REFRESH_MINUTES:
+            quote_refresh_minutes = silent_stock_refresh_minutes()
+            if symbols_age_h < SYMBOL_REFRESH_HOURS and quotes_age_m < quote_refresh_minutes:
                 return payload
 
             if symbols_age_h < SYMBOL_REFRESH_HOURS:

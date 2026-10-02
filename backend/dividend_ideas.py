@@ -11,10 +11,11 @@ from typing import Any
 import yfinance as yf
 
 from db import get_dividend_ideas_cache, list_positions, save_dividend_ideas_cache
+from settings import silent_stock_refresh_minutes
 from symbol_resolver import candidate_symbols
+from yf_limit import yfinance_slot
 
 BOARD_REFRESH_HOURS = 4
-QUOTE_REFRESH_MINUTES = 15
 
 _refresh_lock = threading.Lock()
 
@@ -163,54 +164,55 @@ def _fetch_one(item: dict[str, str]) -> dict[str, Any]:
     name = item["name"]
     region = item["region"]
     try:
-        ticker = yf.Ticker(symbol)
-        try:
-            info = ticker.info or {}
-        except Exception:
-            info = {}
+        with yfinance_slot():
+            ticker = yf.Ticker(symbol)
+            try:
+                info = ticker.info or {}
+            except Exception:
+                info = {}
 
-        price = (
-            _safe_float(info.get("regularMarketPrice"))
-            or _safe_float(info.get("currentPrice"))
-            or _safe_float(info.get("previousClose"))
-        )
-        currency = info.get("currency")
-        yield_pct = _safe_float(info.get("dividendYield"))
-        if yield_pct is not None and yield_pct < 1:
-            yield_pct *= 100.0
+            price = (
+                _safe_float(info.get("regularMarketPrice"))
+                or _safe_float(info.get("currentPrice"))
+                or _safe_float(info.get("previousClose"))
+            )
+            currency = info.get("currency")
+            yield_pct = _safe_float(info.get("dividendYield"))
+            if yield_pct is not None and yield_pct < 1:
+                yield_pct *= 100.0
 
-        now = datetime.now(timezone.utc)
-        start = now - timedelta(days=183)
-        hist = ticker.history(start=start.strftime("%Y-%m-%d"), auto_adjust=True)
-        change_6m_pct = None
-        if hist is not None and not hist.empty:
-            closes = hist["Close"].dropna()
-            if len(closes) >= 2:
-                p0 = float(closes.iloc[0])
-                p1 = float(closes.iloc[-1])
-                if p0:
-                    change_6m_pct = (p1 / p0 - 1.0) * 100.0
-                if price is None:
-                    price = p1
+            now = datetime.now(timezone.utc)
+            start = now - timedelta(days=183)
+            hist = ticker.history(start=start.strftime("%Y-%m-%d"), auto_adjust=True)
+            change_6m_pct = None
+            if hist is not None and not hist.empty:
+                closes = hist["Close"].dropna()
+                if len(closes) >= 2:
+                    p0 = float(closes.iloc[0])
+                    p1 = float(closes.iloc[-1])
+                    if p0:
+                        change_6m_pct = (p1 / p0 - 1.0) * 100.0
+                    if price is None:
+                        price = p1
 
-        dividends = _annual_dividends(ticker, years=5)
-        currency, price, dividends = _normalize_currency(currency, price, dividends)
-        display_name = info.get("shortName") or info.get("longName") or name
+            dividends = _annual_dividends(ticker, years=5)
+            currency, price, dividends = _normalize_currency(currency, price, dividends)
+            display_name = info.get("shortName") or info.get("longName") or name
 
-        return {
-            "region": region,
-            "name": display_name,
-            "symbol": symbol,
-            "price": price,
-            "currency": currency,
-            "change_6m_pct": change_6m_pct,
-            "dividend_yield_pct": yield_pct,
-            "dividends_by_year": dividends,
-            "owned": False,
-            "owned_shares": None,
-            "owned_symbol": None,
-            "error": None,
-        }
+            return {
+                "region": region,
+                "name": display_name,
+                "symbol": symbol,
+                "price": price,
+                "currency": currency,
+                "change_6m_pct": change_6m_pct,
+                "dividend_yield_pct": yield_pct,
+                "dividends_by_year": dividends,
+                "owned": False,
+                "owned_shares": None,
+                "owned_symbol": None,
+                "error": None,
+            }
     except Exception as exc:
         return {
             "region": region,
@@ -256,18 +258,19 @@ def _assemble_payload(
     years = sorted({year for row in rows for year in row.get("dividends_by_year", {})})
     checked = last_checked_at or quotes_updated_at
 
+    quote_refresh_minutes = silent_stock_refresh_minutes()
     return {
         "as_of": quotes_updated_at.isoformat(),
         "quotes_updated_at": quotes_updated_at.isoformat(),
         "board_updated_at": board_updated_at.isoformat(),
         "last_checked_at": checked.isoformat(),
         "next_quotes_refresh_at": (
-            quotes_updated_at + timedelta(minutes=QUOTE_REFRESH_MINUTES)
+            quotes_updated_at + timedelta(minutes=quote_refresh_minutes)
         ).isoformat(),
         "next_board_refresh_at": (
             board_updated_at + timedelta(hours=BOARD_REFRESH_HOURS)
         ).isoformat(),
-        "quote_refresh_minutes": QUOTE_REFRESH_MINUTES,
+        "quote_refresh_minutes": quote_refresh_minutes,
         "board_refresh_hours": BOARD_REFRESH_HOURS,
         "data_changed": data_changed,
         "years": years,
@@ -275,7 +278,7 @@ def _assemble_payload(
             "Curated quality dividend names, not investment advice. "
             "“Lower risk” is relative. The current year is year-to-date only. "
             "Owned matches your Progress open lots. "
-            f"Live data is checked every {QUOTE_REFRESH_MINUTES} minutes and the board "
+            f"Live data is checked every {quote_refresh_minutes} minutes and the board "
             f"(owned split + ordering) every {BOARD_REFRESH_HOURS} hours — the UI updates "
             "only when values actually change."
         ),
@@ -439,7 +442,8 @@ def build_dividend_ideas(*, user_id: int | None = None, force: bool = False) -> 
             quotes_age_m = (now - quotes_at).total_seconds() / 60 if quotes_at else 999
             board_age_h = (now - board_at).total_seconds() / 3600 if board_at else 999
 
-            if quotes_age_m < QUOTE_REFRESH_MINUTES and board_age_h < BOARD_REFRESH_HOURS:
+            quote_refresh_minutes = silent_stock_refresh_minutes()
+            if quotes_age_m < quote_refresh_minutes and board_age_h < BOARD_REFRESH_HOURS:
                 cached_payload["data_changed"] = False
                 return cached_payload
 

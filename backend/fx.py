@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-import yfinance as yf
+from yf_limit import yfinance_slot
 
 _CACHE: dict[tuple[str, str, str], float] = {}
 
@@ -49,11 +49,12 @@ def get_fx_rate(from_currency: str, to_currency: str, on_date: str | date | None
 
     for symbol, invert in _pair_candidates(fr, to):
         try:
-            hist = yf.Ticker(symbol).history(
-                start=start.isoformat(),
-                end=end.isoformat(),
-                auto_adjust=True,
-            )
+            with yfinance_slot():
+                hist = yf.Ticker(symbol).history(
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    auto_adjust=True,
+                )
             if hist.empty:
                 continue
             closes = hist["Close"].dropna()
