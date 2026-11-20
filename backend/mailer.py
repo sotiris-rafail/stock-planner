@@ -7,13 +7,20 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
-from settings import smtp_config
+from settings import EMAIL_DISABLED_MESSAGE, smtp_config, smtp_enabled
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUTBOX_DIR = DATA_DIR / "outbox"
 
 
+class EmailDisabled(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__(EMAIL_DISABLED_MESSAGE)
+
+
 def send_reset_email(*, to_email: str, reset_url: str, reset_hash: str) -> None:
+    if not smtp_enabled():
+        raise EmailDisabled()
     subject = "Reset your Stock Buy Planner password"
     text = (
         "Use this link to choose a new password:\n\n"
@@ -47,6 +54,8 @@ def send_monthly_report_email(
     text_body: str,
     html_body: str,
 ) -> None:
+    if not smtp_enabled():
+        raise EmailDisabled()
     _write_outbox(to_email=to_email, subject=subject, body=text_body, html_body=html_body)
     print(f"Monthly portfolio report for {to_email}: {subject}")
     _deliver_email(
@@ -64,6 +73,8 @@ def _deliver_email(
     text_body: str,
     html_body: str,
 ) -> None:
+    if not smtp_enabled():
+        raise EmailDisabled()
     config = smtp_config()
     host = config["host"]
     if not host:

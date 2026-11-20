@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Budget · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
+</head>
+<body class="md-app bento-app page-budget">
+  <div class="page-loader" id="page-loader" hidden>
+    <div class="page-loader-card" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="page-loader-text" data-i18n="budget.loading">Loading your budget…</p>
+    </div>
+  </div>
+
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
+    </nav>
+
+    <header class="header">
+      <p class="eyebrow" data-i18n="budget.eyebrow">Monthly budget</p>
+      <h1 data-i18n="budget.title">Invest the same amount every month</h1>
+      <p class="lede" data-i18n="budget.lede">
+        Set a start and end month, the money you have each month, and the stocks you
+        intend to buy. Your buys from Progress are matched automatically.
+      </p>
+    </header>
+
+    <main class="bento-grid">
+      <section class="panel form-panel budget-form-panel bento-tile bento-span-4">
+        <div class="bento-tile-head">
+          <h2 data-i18n="budget.yourPlans">Your plans</h2>
+          <button type="button" class="refresh-btn" id="budget-new-btn">
+            <span class="material-symbols-outlined" aria-hidden="true">add</span>
+            <span data-i18n="budget.newPlan">New plan</span>
+          </button>
+        </div>
+        <div class="budget-plan-list" id="budget-plan-list" role="list"></div>
+
+        <form id="budget-form" class="budget-form" novalidate>
+          <h3 class="budget-form-title" id="budget-form-title" data-i18n="budget.formNew">New plan</h3>
+
+          <label class="md-field">
+            <input id="budget-name" name="name" type="text" maxlength="80" placeholder=" " />
+            <span class="md-field-label" data-i18n="budget.name">Plan name (optional)</span>
+          </label>
+
+          <div class="row">
+            <div>
+              <label class="md-field">
+                <input id="budget-start" name="start_month" type="month" placeholder=" " required />
+                <span class="md-field-label" data-i18n="budget.start">Start month</span>
+              </label>
+            </div>
+            <div>
+              <label class="md-field">
+                <input id="budget-end" name="end_month" type="month" placeholder=" " required />
+                <span class="md-field-label" data-i18n="budget.end">End month</span>
+              </label>
+            </div>
+          </div>
+          <p class="md-field-support budget-window-hint" id="budget-window-hint"></p>
+
+          <div class="row">
+            <label class="md-field">
+              <input id="budget-amount" name="monthly_amount" type="number" min="0" step="any" placeholder=" " />
+              <span class="md-field-label" data-i18n="budget.amount">Monthly amount</span>
+            </label>
+            <div class="md-select" data-md-select>
+              <select id="budget-currency" name="currency" data-i18n-aria="budget.currency" aria-label="Currency">
+                <option value="EUR">EUR · €</option>
+                <option value="USD">USD · $</option>
+                <option value="GBP">GBP · £</option>
+                <option value="CHF">CHF</option>
+              </select>
+            </div>
+          </div>
+          <p class="md-field-support" data-i18n="budget.amountHint">Optional. Leave blank to use the total of the stocks below.</p>
+
+          <div class="budget-items-head">
+            <h3 data-i18n="budget.items">Stocks to buy each month</h3>
+            <button type="button" class="row-action" id="budget-add-item">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              <span data-i18n="budget.addItem">Add stock</span>
+            </button>
+          </div>
+          <datalist id="budget-symbol-options"></datalist>
+          <div class="budget-items" id="budget-items"></div>
+
+          <div class="budget-allocation" id="budget-allocation" aria-live="polite"></div>
+
+          <label class="md-checkbox">
+            <input id="budget-include-unplanned" name="include_unplanned" type="checkbox" checked />
+            <span class="md-checkbox-box" aria-hidden="true">
+              <span class="material-symbols-outlined">check</span>
+            </span>
+            <span data-i18n="budget.includeUnplanned">Count buys of other stocks toward this budget</span>
+          </label>
+
+          <div class="btn-row">
+            <button type="button" class="btn-secondary" id="budget-cancel-btn" data-i18n="budget.cancel">Cancel</button>
+            <button type="submit" id="budget-save-btn" data-i18n="budget.save">Save plan</button>
+          </div>
+          <button type="button" class="link-btn budget-delete-btn" id="budget-delete-btn" hidden data-i18n="budget.delete">Delete plan</button>
+          <p id="budget-form-error" class="error" role="alert" hidden></p>
+          <p id="budget-form-ok" class="ok" hidden></p>
+        </form>
+      </section>
+
+      <section class="panel results-panel budget-results bento-tile bento-span-8">
+        <div class="ideas-toolbar">
+          <p class="disclaimer" data-i18n="budget.disclaimer">Buys, dividends and live value come from your Progress lots. Amounts in other currencies are converted at the rate of each trade or payout date. Not investment advice.</p>
+          <div class="page-toolbar-actions">
+            <p class="page-status" id="budget-status" data-i18n="common.loading">Loading…</p>
+            <button type="button" class="refresh-btn" id="budget-refresh-btn">
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+              <span class="refresh-btn-label" data-i18n="common.refresh">Refresh</span>
+            </button>
+          </div>
+        </div>
+        <div id="budget-content" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/prefetch.js?v=20261104a"></script>
+  <script src="/static/list-tools.js?v=20261104a"></script>
+  <script src="/static/symbol-sheet.js?v=20261104g"></script>
+  <script src="/static/md-select.js?v=20261104a"></script>
+  <script src="/static/budget.js?v=20261118a"></script>
+</body>
+</html>

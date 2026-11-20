@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
+import yfinance as yf
+
 from yf_limit import yfinance_slot
 
 _CACHE: dict[tuple[str, str, str], float] = {}

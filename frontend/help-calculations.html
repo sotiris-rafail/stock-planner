@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How we calculate · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261119a" />
+</head>
+<body class="md-app bento-app page-help has-site-footer">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/login"><span class="material-symbols-outlined" aria-hidden="true">login</span><span data-i18n="nav.login">Sign in</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/pricing"><span class="material-symbols-outlined" aria-hidden="true">sell</span><span data-i18n="nav.pricing">Pricing</span></a>
+      <a href="/help/calculations" class="active"><span class="material-symbols-outlined" aria-hidden="true">help</span><span data-i18n="nav.help">Help</span></a>
+    </nav>
+
+    <header class="header header-centered">
+      <p class="eyebrow" data-i18n="help.eyebrow">Transparency</p>
+      <h1 data-i18n="help.title">How we calculate</h1>
+      <p class="lede" data-i18n="help.lede">Numbers on Budget and Progress come from your logged trades and these rules. They are illustrative, not tax or investment advice.</p>
+    </header>
+
+    <main class="bento-grid help-article">
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="help.budgetTitle">Budget plans</h2>
+        <p data-i18n="help.budgetP1">A plan has a start and end calendar month, an optional monthly amount, and optional per-stock monthly targets. Each month in the window gets the same monthly budget unless you leave the amount blank — then the budget is the sum of your stock rows.</p>
+        <p data-i18n="help.budgetP2">Buys logged in Progress are matched to a month by purchase date. Spending counts toward the plan if the symbol is listed on the plan, or if “count other stocks” is enabled. Otherwise those buys are reported separately and do not reduce the monthly budget.</p>
+        <p data-i18n="help.budgetP3">Set-aside is money from past months you did not invest (budget minus spent). A month is on track when every listed stock reached its target, or the full monthly budget was invested for plans without stock rows.</p>
+      </section>
+
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="help.fxTitle">Currencies and FX</h2>
+        <p data-i18n="help.fxP1">Each buy stores its trading currency. Budget totals use your plan currency. Amounts convert using the exchange rate on the trade date when available; if a historical rate is missing, today’s rate is used and you’ll see a warning.</p>
+        <p data-i18n="help.fxP2">Dividends use the payout date rate. Live portfolio value uses today’s rate. GBp (pence) quotes are treated as GBP.</p>
+      </section>
+
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="help.fifoTitle">Progress lots (FIFO)</h2>
+        <p data-i18n="help.fifoP1">Open lots are first-in-first-out. A sell reduces the oldest lots first and records realized gain using those lot prices.</p>
+        <p data-i18n="help.fifoP2">Budget “invested so far” includes spending on buys inside the plan window even if you later sold those shares. Sells after the allocations feature keep historical spend via sale lot records; older sells before that upgrade may not restore full spent amounts.</p>
+      </section>
+
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="help.divTitle">Dividends</h2>
+        <p data-i18n="help.divP1">During the plan window, dividends count if you held the share on the pay date, the buy was on or before the pay date, and the lot had not been fully sold before payout. Net amounts apply your dividend withholding % from Account settings.</p>
+      </section>
+
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="help.liveTitle">Live prices</h2>
+        <p data-i18n="help.liveP1">Quotes come from Yahoo Finance or Stooq depending on symbol settings. Growth, projection, and market value depend on live data and can show “—” when a quote fails.</p>
+        <p class="disclaimer" data-i18n="help.disclaimer">Past performance does not guarantee future results.</p>
+        <p><a class="link-btn" href="/pricing" data-i18n="help.backPricing">See pricing</a></p>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261119a"></script>
+  <script src="/static/auth.js?v=20261119a"></script>
+</body>
+</html>

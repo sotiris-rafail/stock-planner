@@ -1,7 +1,8 @@
 (function (global) {
   const LOGIN_PATH = "/login";
-  const PROTECTED_PAGES = new Set(["/progress", "/track", "/notifications"]);
+  const PROTECTED_PAGES = new Set(["/home", "/budget", "/progress", "/track", "/notifications", "/account", "/welcome"]);
   let authenticated = false;
+  let currentEmail = "";
   let authReady = false;
   const authReadyWaiters = [];
   let tokenRefreshTimer = null;
@@ -49,13 +50,16 @@
       const response = await global.fetch("/api/auth/me");
       if (!response.ok) {
         authenticated = false;
+        currentEmail = "";
         return false;
       }
       const data = await response.json();
       authenticated = Boolean(data.authenticated);
+      currentEmail = authenticated ? (data.email || "") : "";
       return authenticated;
     } catch {
       authenticated = false;
+      currentEmail = "";
       return false;
     }
   }
@@ -70,8 +74,14 @@
       if (!response.ok) {
         if (response.status === 401) {
           authenticated = false;
+          currentEmail = "";
           updateNav();
           applySavePanels();
+          global.dispatchEvent(
+            new CustomEvent("sbp:auth-ready", {
+              detail: { authenticated: false, email: "" },
+            })
+          );
         }
         return false;
       }
@@ -120,6 +130,7 @@
       /* ignore */
     }
     authenticated = false;
+    currentEmail = "";
     clearClientCaches();
     if (tokenRefreshTimer) {
       clearTimeout(tokenRefreshTimer);
@@ -143,21 +154,7 @@
       link.hidden = !authenticated;
     }
 
-    if (isLoginPage()) {
-      return;
-    }
-
-    if (authenticated) {
-      const link = document.createElement("a");
-      link.href = "#";
-      link.setAttribute("data-auth-logout", "true");
-      link.innerHTML =
-        '<span class="material-symbols-outlined" aria-hidden="true">logout</span>Sign out';
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
-        logout();
-      });
-      nav.appendChild(link);
+    if (isLoginPage() || authenticated) {
       return;
     }
 
@@ -165,8 +162,9 @@
     link.href = LOGIN_PATH;
     link.setAttribute("data-auth-login", "true");
     link.className = "nav-sign-in";
+    const signIn = window.SbpI18n?.t("nav.signin") || "Sign in";
     link.innerHTML =
-      '<span class="material-symbols-outlined" aria-hidden="true">login</span>Sign in';
+      `<span class="material-symbols-outlined" aria-hidden="true">login</span>${signIn}`;
     nav.insertBefore(link, nav.firstChild);
   }
 
@@ -215,8 +213,13 @@
     applySavePanels();
     authReady = true;
     global.dispatchEvent(
-      new CustomEvent("sbp:auth-ready", { detail: { authenticated } })
+      new CustomEvent("sbp:auth-ready", {
+        detail: { authenticated, email: currentEmail },
+      })
     );
+    global.SbpI18n?.syncAccountChrome?.({
+      detail: { authenticated, email: currentEmail },
+    });
     flushAuthReadyWaiters();
     if (authenticated) {
       scheduleSilentTokenRefresh();
@@ -229,6 +232,9 @@
     refreshSession,
     refreshSessionToken,
     isAuthenticated,
+    currentEmail() {
+      return currentEmail;
+    },
     whenAuthReady,
     logout,
     clearClientCaches,

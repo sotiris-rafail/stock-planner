@@ -1,3 +1,4 @@
+const t = (key, vars) => (window.SbpI18n && window.SbpI18n.t(key, vars)) || key;
 const form = document.getElementById("trade-form");
 const submitBtn = document.getElementById("submit-btn");
 const fillPriceBtn = document.getElementById("fill-price-btn");
@@ -197,20 +198,20 @@ function findPosition(symbol) {
 function updatePriceCurrencyHint() {
   const symbol = symbolInput.value.trim().toUpperCase();
   if (USD_PRICE_SYMBOLS.has(symbol)) {
-    if (priceHint) priceHint.textContent = "Enter USD price (VUAA.EU rule)";
+    if (priceHint) priceHint.textContent = t("progress.usdRule");
     if (priceCurrencyHint) {
       priceCurrencyHint.hidden = false;
       priceCurrencyHint.textContent =
-        "VUAA.EU prices are always treated as USD (resolved to VUAA.L).";
+        t("progress.vuaaUsd");
     }
   } else if (EUR_PRICE_SYMBOLS.has(symbol)) {
-    if (priceHint) priceHint.textContent = "Enter EUR price (DTE.DE)";
+    if (priceHint) priceHint.textContent = t("progress.eurRule");
     if (priceCurrencyHint) {
       priceCurrencyHint.hidden = false;
-      priceCurrencyHint.textContent = "DTE.DE prices are always treated as EUR.";
+      priceCurrencyHint.textContent = t("progress.dteEur");
     }
   } else {
-    if (priceHint) priceHint.textContent = "Blank = live price";
+    if (priceHint) priceHint.textContent = t("progress.blankLive");
     if (priceCurrencyHint) {
       priceCurrencyHint.hidden = true;
       priceCurrencyHint.textContent = "";
@@ -222,12 +223,11 @@ function setTradeMode(mode) {
   tradeMode = mode === "sell" ? "sell" : "buy";
   tabBuy.classList.toggle("active", tradeMode === "buy");
   tabSell.classList.toggle("active", tradeMode === "sell");
-  tradePanelTitle.textContent = tradeMode === "sell" ? "Log a sale" : "Log a purchase";
-  sharesLabel.textContent = tradeMode === "sell" ? "Shares sold" : "Shares bought";
-  dateLabel.textContent = tradeMode === "sell" ? "Sell date" : "Purchase date";
-  submitBtn.textContent = tradeMode === "sell" ? "Save sale" : "Save purchase";
-  notesInput.placeholder =
-    tradeMode === "sell" ? "Trimmed DTE.DE position" : "Month 1 of DTE.DE plan";
+  tradePanelTitle.textContent = tradeMode === "sell" ? t("progress.logSell") : t("progress.logBuy");
+  sharesLabel.textContent = tradeMode === "sell" ? t("progress.sharesSold") : t("progress.sharesBought");
+  dateLabel.textContent = tradeMode === "sell" ? t("progress.sellDate") : t("progress.purchaseDate");
+  submitBtn.textContent = tradeMode === "sell" ? t("progress.saveSell") : t("progress.saveBuy");
+  notesInput.placeholder = " ";
   updateOwnedHint();
 }
 
@@ -242,16 +242,16 @@ function updateOwnedHint() {
   const pos = findPosition(symbol);
   if (!symbol) {
     ownedHint.hidden = false;
-    ownedHint.textContent = "Enter a ticker you own to sell.";
+    ownedHint.textContent = t("progress.enterOwn");
     return;
   }
   if (!pos || pos.shares <= 0) {
     ownedHint.hidden = false;
-    ownedHint.textContent = `No open position for ${symbol}.`;
+    ownedHint.textContent = t("progress.noPos", { symbol });
     return;
   }
   ownedHint.hidden = false;
-  ownedHint.innerHTML = `Available to sell: <strong>${num(pos.shares, 4)}</strong> ${pos.symbol} · avg cost ${money(pos.avg_cost_per_share, pos.currency)}`;
+  ownedHint.innerHTML = `${t("progress.sellAvail")}<strong>${num(pos.shares, 4)}</strong> ${pos.symbol} · ${t("progress.avgCostHint")} ${money(pos.avg_cost_per_share, pos.currency)}`;
 }
 
 function renderSymbolOptions() {
@@ -260,57 +260,172 @@ function renderSymbolOptions() {
     .join("");
 }
 
-function renderHoldingsRows(holdings, currency) {
-  if (!holdings || holdings.length === 0) {
-    return `<tr><td colspan="11" class="empty">No open holdings in ${currency}.</td></tr>`;
-  }
+const holdingsModal = document.getElementById("holdings-modal");
+const holdingsModalBody = document.getElementById("holdings-modal-body");
+const holdingsModalTitle = document.getElementById("holdings-modal-title");
+const holdingsModalMeta = document.getElementById("holdings-modal-meta");
+let holdingsModalCurrency = null;
 
-  return holdings
-    .map((h) => {
-      const c = h.currency || currency;
-      const change =
-        h.change_pct == null
-          ? ""
-          : `<div class="sub ${h.change_pct >= 0 ? "pos" : "neg"}">${h.change_pct >= 0 ? "+" : ""}${num(h.change_pct, 2)}% today</div>`;
-      const div = h.dividend || {};
-      const earned = h.dividends_earned || 0;
-      const earnedGross = h.dividends_earned_gross;
-      const earnedTax = h.dividends_tax;
-      const whPct = h.dividends_withholding_pct || 0;
-      const earnedPct = h.dividends_earned_pct;
-      const buyLabel = `${num(h.purchase_count || 0, 0)} lot${h.purchase_count === 1 ? "" : "s"}`;
-      const taxNote =
-        whPct > 0 && earnedGross
-          ? `<div class="sub">gross ${money(earnedGross, c)} − ${num(whPct, 0)}% tax ${money(earnedTax, c)}</div>`
-          : "";
-      return `
-      <tr>
-        <td class="left">
-          <span class="stock-name">
-            ${stockIconHtml(h.symbol)}
-            <span class="stock-name-text">
-              <strong>${escapeHtml(h.company_name || h.symbol)}</strong>
-              <div class="sub">${escapeHtml(h.symbol)} · ${buyLabel}</div>
-            </span>
-          </span>
-        </td>
-        <td>${num(h.shares, 4)}</td>
-        <td>${money(h.avg_cost_per_share, c)}</td>
-        <td>${money(h.total_invested, c)}</td>
-        <td>${money(h.current_price, c)}${change}</td>
-        <td>${money(h.market_value, c)}</td>
-        <td class="${growthClass(h.unrealized_gain)}">${money(h.unrealized_gain, c)} (${num(h.unrealized_gain_pct, 2)}%)</td>
-        <td class="${growthClass(h.realized_gain)}">${money(h.realized_gain, c)}${h.realized_gain_pct == null ? "" : ` (${num(h.realized_gain_pct, 2)}%)`}</td>
-        <td class="left">
-          <strong>${formatYield(div)}</strong>
-          ${div.annual_rate != null ? `<div class="sub">~${money(div.annual_rate, c)}/sh/yr</div>` : ""}
-          ${recentPayoutsHtml(div, c)}
-        </td>
-        <td class="${growthClass(earned)}">${money(earned, c)}${taxNote}</td>
-        <td class="${growthClass(earnedPct)}">${earnedPct == null ? "—" : `${num(earnedPct, 2)}%`}</td>
-      </tr>`;
-    })
+function holdingStat(label, value, className = "") {
+  return `<div class="holding-stat">
+    <span class="holding-stat-label">${escapeHtml(label)}</span>
+    <span class="holding-stat-value ${className}">${value}</span>
+  </div>`;
+}
+
+function renderHoldingCard(h, currency) {
+  const c = h.currency || currency;
+  const change =
+    h.change_pct == null
+      ? ""
+      : `<span class="sub ${h.change_pct >= 0 ? "pos" : "neg"}">${h.change_pct >= 0 ? "+" : ""}${num(h.change_pct, 2)}${t("progress.pctToday")}</span>`;
+  const div = h.dividend || {};
+  const earned = h.dividends_earned || 0;
+  const earnedGross = h.dividends_earned_gross;
+  const earnedTax = h.dividends_tax;
+  const whPct = h.dividends_withholding_pct || 0;
+  const earnedPct = h.dividends_earned_pct;
+  const buyLabel =
+    h.purchase_count === 1
+      ? t("progress.lot1", { n: num(h.purchase_count || 0, 0) })
+      : t("progress.lotN", { n: num(h.purchase_count || 0, 0) });
+  const taxNote =
+    whPct > 0 && earnedGross
+      ? `<span class="sub">gross ${money(earnedGross, c)} − ${num(whPct, 0)}% tax ${money(earnedTax, c)}</span>`
+      : "";
+  const lots = (h.lots || [])
+    .map(
+      (lot) =>
+        `<li><span>${escapeHtml(lot.purchased_at || "—")}</span><strong>${num(lot.shares, 4)} @ ${money(lot.price_per_share, c)}</strong></li>`
+    )
     .join("");
+
+  return `<article class="holding-card panel">
+    <header class="holding-card-head">
+      ${stockIconHtml(h.symbol)}
+      <div>
+        <h3><button type="button" class="sheet-name" data-open-sheet="${escapeHtml(h.symbol)}">${escapeHtml(h.company_name || h.symbol)}</button></h3>
+        <p>${escapeHtml(h.symbol)} · ${buyLabel}</p>
+      </div>
+    </header>
+    <div class="holding-card-stats">
+      ${holdingStat(t("progress.shares"), num(h.shares, 4))}
+      ${holdingStat(t("progress.avgCost"), money(h.avg_cost_per_share, c))}
+      ${holdingStat(t("home.invested"), money(h.total_invested, c))}
+      ${holdingStat(t("progress.livePrice"), `${money(h.current_price, c)}${change ? ` ${change}` : ""}`)}
+      ${holdingStat(t("progress.value"), money(h.market_value, c))}
+      ${holdingStat(t("progress.unrealized"), `${money(h.unrealized_gain, c)} (${num(h.unrealized_gain_pct, 2)}%)`, growthClass(h.unrealized_gain))}
+      ${holdingStat(t("progress.realized"), `${money(h.realized_gain, c)}${h.realized_gain_pct == null ? "" : ` (${num(h.realized_gain_pct, 2)}%)`}`, growthClass(h.realized_gain))}
+    </div>
+    <details class="holding-dividends">
+      <summary>
+        <span>${t("plan.dividends")}</span>
+        <span class="holding-dividends-hint">${formatYield(div)}${earned ? ` · ${money(earned, c)} ${t("progress.earned")}` : ""}</span>
+      </summary>
+      <div class="holding-card-stats">
+        ${holdingStat(t("progress.divYield"), `${formatYield(div)}${div.annual_rate != null ? `<span class="sub">~${money(div.annual_rate, c)}/sh/yr</span>` : ""}`)}
+        ${holdingStat(t("progress.divNet"), `${money(earned, c)}${taxNote}`, growthClass(earned))}
+        ${holdingStat(t("progress.divPct"), earnedPct == null ? "—" : `${num(earnedPct, 2)}%`, growthClass(earnedPct))}
+      </div>
+      <div class="holding-card-payouts">${recentPayoutsHtml(div, c)}</div>
+    </details>
+    ${
+      lots
+        ? `<details class="holding-lots">
+      <summary>
+        <span>${t("progress.lotsLabel")}</span>
+        <span class="holding-lots-hint">${buyLabel}</span>
+      </summary>
+      <ul class="holding-card-lots">${lots}</ul>
+    </details>`
+        : ""
+    }
+    ${planVsLotsHtml(h)}
+    <div class="row-actions holding-links">
+      <button type="button" class="row-action" data-open-plan="${escapeHtml(h.symbol)}">${t("progress.openPlan")}</button>
+      <button type="button" class="row-action" data-open-ideas="${escapeHtml(h.symbol)}">${t("progress.openIdeas")}</button>
+      <button type="button" class="row-action" data-open-suggestions="${escapeHtml(h.symbol)}">${t("progress.openSuggestions")}</button>
+    </div>
+  </article>`;
+}
+
+function planVsLotsHtml(holding) {
+  try {
+    const plan = JSON.parse(localStorage.getItem("sbp:plan:lastSearch") || "null");
+    if (!plan?.symbol || plan.yearly) return "";
+    if (String(plan.symbol).toUpperCase() !== String(holding.symbol || "").toUpperCase()) return "";
+    const target = Number(plan.total_shares) / Math.max(1, Number(plan.periods) || 1);
+    const now = new Date();
+    const bought = (holding.lots || []).reduce((sum, lot) => {
+      const date = lot.purchased_at ? new Date(lot.purchased_at) : null;
+      if (!date || date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) return sum;
+      return sum + (Number(lot.shares) || 0);
+    }, 0);
+    return `<p class="plan-vs-lots">${t("progress.thisMonth", { bought: num(bought, 4), target: num(target, 4) })}</p>`;
+  } catch {
+    return "";
+  }
+}
+
+function renderHoldingsModalBody(group, { loading = false } = {}) {
+  if (!holdingsModalBody) return;
+  const c = group?.currency || holdingsModalCurrency || "";
+  if (holdingsModalTitle) {
+    holdingsModalTitle.textContent = currencyTitle(c) || t("progress.openHoldings");
+  }
+  if (loading) {
+    if (holdingsModalMeta) holdingsModalMeta.textContent = t("progress.loadingLive");
+    holdingsModalBody.innerHTML = `<p class="muted holdings-modal-empty">${t("progress.loadHoldings")}</p>`;
+    return;
+  }
+  const holdings = group?.holdings || [];
+  if (holdingsModalMeta) {
+    holdingsModalMeta.textContent =
+      holdings.length === 1
+        ? t("progress.holdingOne", { n: holdings.length })
+        : t("progress.holdingsCount", { n: holdings.length });
+  }
+  holdingsModalBody.innerHTML = holdings.length
+    ? holdings
+        .map(
+          (h) => `
+      <button type="button" class="holding-pick" data-open-sheet="${escapeHtml(h.symbol)}">
+        <strong>${escapeHtml(h.company_name || h.symbol)}</strong>
+        <span>${escapeHtml(h.symbol)}</span>
+        <span>${money(h.market_value, h.currency || c)}</span>
+      </button>`
+        )
+        .join("")
+    : `<p class="muted holdings-modal-empty">${t("progress.noHoldingsC", { c: escapeHtml(c) })}</p>`;
+}
+
+function closeHoldingsModal() {
+  holdingsModalCurrency = null;
+  if (!holdingsModal) return;
+  holdingsModal.hidden = true;
+  document.body.classList.remove("progress-modal-open");
+}
+
+async function openHoldingsModal(currency) {
+  holdingsModalCurrency = currency;
+  if (!holdingsModal) return;
+  holdingsModal.hidden = false;
+  document.body.classList.add("progress-modal-open");
+  holdingsModal.querySelector(".progress-modal-close")?.focus();
+
+  const cached = (progressCache?.by_currency || []).find((g) => g.currency === currency);
+  renderHoldingsModalBody(cached, { loading: !progressFullLoaded });
+
+  if (!progressFullLoaded) {
+    try {
+      await ensureFullProgress();
+    } catch (err) {
+      showError(err.message || t("progress.failHoldings"));
+      if (holdingsModalBody) {
+        holdingsModalBody.innerHTML = `<p class="muted holdings-modal-empty">${t("progress.failHoldings")}</p>`;
+      }
+    }
+  }
 }
 
 function collectRemainingLots(data) {
@@ -549,8 +664,8 @@ function bindSortableTable(tableEl, state, onChange) {
 function renderLotsTableRows(lots) {
   if (!lots.length) {
     const message = normalizeSearch(lotsState.search)
-      ? "No matching buy lots."
-      : "No remaining buy lots.";
+      ? t("progress.noLotsMatch")
+      : t("progress.noLots");
     lotsBody.innerHTML = `<tr><td colspan="10" class="empty">${message}</td></tr>`;
     return;
   }
@@ -598,8 +713,8 @@ function updateLotsPaginationUi(filteredTotal = lotsState.total) {
         ? `Showing all ${num(filteredTotal, 0)} of ${num(baseTotal, 0)}`
         : `Showing all ${num(filteredTotal, 0)}`
       : searchActive
-        ? "No matches"
-        : "No items";
+        ? t("progress.noMatches")
+        : t("progress.noItems");
   } else {
     const pages = lotsState.totalPages || 0;
     lotsPageStatus.textContent = pages
@@ -607,24 +722,24 @@ function updateLotsPaginationUi(filteredTotal = lotsState.total) {
         ? `Page ${lotsState.page} of ${pages} · ${num(filteredTotal, 0)} of ${num(baseTotal, 0)}`
         : `Page ${lotsState.page} of ${pages} · ${num(filteredTotal, 0)} total`
       : searchActive
-        ? "No matches"
-        : "No items";
+        ? t("progress.noMatches")
+        : t("progress.noItems");
   }
 
   lotsHint.textContent = searchActive
     ? `${num(filteredTotal, 0)} match${filteredTotal === 1 ? "" : "es"} · ${num(baseTotal, 0)} total`
     : filteredTotal
       ? `${num(filteredTotal, 0)} remaining lot${filteredTotal === 1 ? "" : "s"}`
-      : "No remaining lots";
+      : t("progress.noLotsYet");
 }
 
 function resetLotsAccordion() {
   lotsState.loaded = false;
   lotsState.page = 1;
-  lotsHint.textContent = "Open to view remaining lots";
+  lotsHint.textContent = t("progress.lotsHint");
   lotsPagination.hidden = true;
   lotsBody.innerHTML =
-    `<tr><td colspan="10" class="empty">Open this section to view remaining buy lots.</td></tr>`;
+    `<tr><td colspan="10" class="empty">${t("progress.lotsEmpty")}</td></tr>`;
 }
 
 function showLotsPage() {
@@ -658,84 +773,60 @@ function renderCurrencySection(group, { holdingsLoaded = false } = {}) {
     holdingsLoaded && group.total_dividends_earned != null
       ? `${money(group.total_dividends_earned, c)} (${num(group.total_dividends_earned_pct, 2)}%)`
       : "—";
-  const holdingsBody = holdingsLoaded
-    ? renderHoldingsRows(holdings, c)
-    : `<tr><td colspan="11" class="empty">Loading live holdings…</td></tr>`;
   const hintText = holdingsLoaded
-    ? `${openCount} holding${openCount === 1 ? "" : "s"}`
-    : "Loading…";
+    ? openCount === 1
+      ? t("progress.holdingOne", { n: openCount })
+      : t("progress.holdingsCount", { n: openCount })
+    : t("progress.openDetails");
 
   return `
     <article class="currency-block" data-currency="${c}">
       <div class="currency-heading">
         <h3>${currencyTitle(c)}</h3>
-        <span class="currency-meta">${openCount} open · ${num(group.purchase_count, 0)} buys · ${num(group.sale_count || 0, 0)} sells</span>
+        <span class="currency-meta">${t("progress.meta", { open: openCount, buys: num(group.purchase_count, 0), sells: num(group.sale_count || 0, 0) })}</span>
       </div>
       <div class="summary currency-summary currency-summary-wide">
         <div class="stat">
-          <span class="label">Invested (${c})</span>
+          <span class="label">${t("progress.investedC", { c })}</span>
           <span class="value">${money(group.total_invested, c)}</span>
         </div>
         <div class="stat">
-          <span class="label">Live value (${c})</span>
+          <span class="label">${t("progress.liveC", { c })}</span>
           <span class="value">${liveValue}</span>
         </div>
         <div class="stat">
-          <span class="label">Unrealized (${c})</span>
+          <span class="label">${t("progress.unrealC", { c })} ${window.SbpI18n?.helpIcon?.(t("help.unrealized")) || ""}</span>
           <span class="value ${holdingsLoaded ? growthClass(group.total_unrealized_gain) : ""}">${unrealized}</span>
         </div>
         <div class="stat">
-          <span class="label">Realized (${c})</span>
+          <span class="label">${t("progress.realC", { c })} ${window.SbpI18n?.helpIcon?.(t("help.realized")) || ""}</span>
           <span class="value ${growthClass(group.total_realized_gain)}">${money(group.total_realized_gain, c)}</span>
         </div>
         <div class="stat">
-          <span class="label">Dividends earned (${c})</span>
+          <span class="label">${t("progress.divC", { c })}</span>
           <span class="value ${holdingsLoaded ? growthClass(group.total_dividends_earned) : ""}">${dividends}</span>
           ${
             holdingsLoaded && c === "USD"
-              ? `<span class="sub">US companies: net of 30% withholding (ADRs excluded)</span>`
+              ? `<span class="sub">${t("progress.usdTax")}</span>`
               : holdingsLoaded && c === "EUR"
-                ? `<span class="sub">EU companies: net of 5% withholding</span>`
+                ? `<span class="sub">${t("progress.eurTax")}</span>`
                 : ""
           }
         </div>
       </div>
-      <details class="history-accordion holdings-accordion" data-currency="${c}">
-        <summary>
-          <span class="accordion-title">Open holdings</span>
+      <button type="button" class="holdings-open-btn" data-open-holdings="${c}">
+        <span>
+          <span class="accordion-title">${t("progress.openHoldings")}</span>
           <span class="accordion-hint holdings-hint">${hintText}</span>
-        </summary>
-        <div class="history-accordion-body">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Stock</th>
-                  <th>Shares</th>
-                  <th>Avg cost</th>
-                  <th>Invested</th>
-                  <th>Live price</th>
-                  <th>Value</th>
-                  <th>Unrealized</th>
-                  <th>Realized</th>
-                  <th>Dividend yield / history</th>
-                  <th>Div. earned (net)</th>
-                  <th>Div. % of invested</th>
-                </tr>
-              </thead>
-              <tbody class="holdings-body">${holdingsBody}</tbody>
-            </table>
-          </div>
-        </div>
-      </details>
+        </span>
+        <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+      </button>
     </article>
   `;
 }
 
 function openHoldingsCurrencies() {
-  return [...currencySections.querySelectorAll(".holdings-accordion[open]")].map(
-    (el) => el.getAttribute("data-currency")
-  );
+  return holdingsModalCurrency ? [holdingsModalCurrency] : [];
 }
 
 function renderProgress(data, { restoreOpen = [] } = {}) {
@@ -752,35 +843,16 @@ function renderProgress(data, { restoreOpen = [] } = {}) {
 
   if (groups.length === 0) {
     currencySections.innerHTML =
-      `<p class="empty-copy">No positions yet. Log a buy or sell to see progress by currency.</p>`;
+      `<p class="empty-copy">${t("progress.emptyPositions")}</p>`;
   } else {
     currencySections.innerHTML = groups
       .map((g) => renderCurrencySection(g, { holdingsLoaded }))
       .join("");
   }
 
-  if (holdingsLoaded) {
-    for (const currency of restoreOpen) {
-      const acc = currencySections.querySelector(
-        `.holdings-accordion[data-currency="${currency}"]`
-      );
-      if (acc) {
-        acc.open = true;
-        const hint = acc.querySelector(".holdings-hint");
-        if (hint) {
-          const group = groups.find((g) => g.currency === currency);
-          const n = (group && group.holdings && group.holdings.length) || 0;
-          hint.textContent = `${n} holding${n === 1 ? "" : "s"}`;
-        }
-      }
-    }
-    for (const acc of currencySections.querySelectorAll(".holdings-accordion[open]")) {
-      const hint = acc.querySelector(".holdings-hint");
-      const currency = acc.getAttribute("data-currency");
-      const group = groups.find((g) => g.currency === currency);
-      const n = (group && group.holdings && group.holdings.length) || 0;
-      if (hint) hint.textContent = `${n} holding${n === 1 ? "" : "s"}`;
-    }
+  if (holdingsLoaded && holdingsModalCurrency) {
+    const openGroup = groups.find((g) => g.currency === holdingsModalCurrency);
+    if (openGroup) renderHoldingsModalBody(openGroup);
   }
 
   if (lotsAccordion.open && holdingsLoaded) {
@@ -789,9 +861,11 @@ function renderProgress(data, { restoreOpen = [] } = {}) {
     lotsState.loaded = false;
     lotsHint.textContent = holdingsLoaded
       ? remainingLots.length
-        ? `${num(remainingLots.length, 0)} remaining lot${remainingLots.length === 1 ? "" : "s"} · open to view`
-        : "Open to view remaining lots"
-      : "Open to view remaining lots";
+        ? remainingLots.length === 1
+          ? t("progress.lotOne", { n: num(remainingLots.length, 0) })
+          : t("progress.lotsCount", { n: num(remainingLots.length, 0) })
+        : t("progress.lotsHint")
+      : t("progress.lotsHint");
     lotsPagination.hidden = true;
   }
 }
@@ -806,20 +880,16 @@ async function ensureFullProgress({ force = false } = {}) {
   }
 
   progressLoading = true;
-  const openCurrencies = openHoldingsCurrencies();
-  for (const acc of currencySections.querySelectorAll(".holdings-accordion[open]")) {
-    const hint = acc.querySelector(".holdings-hint");
-    const body = acc.querySelector(".holdings-body");
-    if (hint) hint.textContent = "Loading…";
-    if (body) {
-      body.innerHTML =
-        `<tr><td colspan="11" class="empty"><div class="inline-loading"><div class="spinner spinner-sm" aria-hidden="true"></div><span>Loading live prices…</span></div></td></tr>`;
-    }
+  if (holdingsModalCurrency) {
+    const cached = (progressCache?.by_currency || []).find(
+      (g) => g.currency === holdingsModalCurrency
+    );
+    renderHoldingsModalBody(cached, { loading: true });
   }
 
   try {
-    const data = await window.SbpCache.fetchAndCache(window.SbpCache.KEYS.progress);
-    renderProgress(data, { restoreOpen: openCurrencies });
+    const data = await window.SbpCache.fetchKey(window.SbpCache.KEYS.progress);
+    renderProgress(data, { restoreOpen: holdingsModalCurrency ? [holdingsModalCurrency] : [] });
     await loadPositions();
     return data;
   } finally {
@@ -830,41 +900,41 @@ async function ensureFullProgress({ force = false } = {}) {
 function renderHistoryRows(transactions) {
   if (!transactions || transactions.length === 0) {
     const message = normalizeSearch(historyState.search)
-      ? "No matching transactions."
-      : "No transactions found.";
+      ? t("progress.noTxMatch")
+      : t("progress.noTx");
     purchasesBody.innerHTML = `<tr><td colspan="10" class="empty">${message}</td></tr>`;
     return;
   }
 
   purchasesBody.innerHTML = transactions
-    .map((t) => {
-      const c = t.currency || "USD";
-      const isSell = t.type === "sell";
+    .map((txn) => {
+      const c = txn.currency || "USD";
+      const isSell = txn.type === "sell";
       const result = isSell
-        ? `<span class="${growthClass(t.realized_gain)}">${money(t.realized_gain, c)}</span>`
+        ? `<span class="${growthClass(txn.realized_gain)}">${money(txn.realized_gain, c)}</span>`
         : "—";
       const deleteCell = isSell
         ? "—"
-        : `<button type="button" class="link-btn" data-delete="${t.id}">Delete</button>`;
+        : `<button type="button" class="link-btn" data-delete="${txn.id}">Delete</button>`;
       return `
       <tr>
-        <td class="left">${t.txn_date}</td>
-        <td><span class="type-pill ${isSell ? "sell" : "buy"}">${isSell ? "Sell" : "Buy"}</span></td>
+        <td class="left">${txn.txn_date}</td>
+        <td><span class="type-pill ${isSell ? "sell" : "buy"}">${isSell ? t("progress.sell") : t("progress.buy")}</span></td>
         <td class="left">
           <span class="stock-name">
-            ${stockIconHtml(t.symbol)}
+            ${stockIconHtml(txn.symbol)}
             <span class="stock-name-text">
-              <strong>${escapeHtml(t.symbol)}</strong>
-              ${t.company_name ? `<div class="sub">${escapeHtml(t.company_name)}</div>` : ""}
+              <strong>${escapeHtml(txn.symbol)}</strong>
+              ${txn.company_name ? `<div class="sub">${escapeHtml(txn.company_name)}</div>` : ""}
             </span>
           </span>
         </td>
         <td><span class="currency-pill">${c}</span></td>
-        <td>${num(t.shares, 4)}</td>
-        <td>${money(t.price_per_share, c)}</td>
-        <td>${money(t.amount, c)}</td>
+        <td>${num(txn.shares, 4)}</td>
+        <td>${money(txn.price_per_share, c)}</td>
+        <td>${money(txn.amount, c)}</td>
         <td>${result}</td>
-        <td class="left notes">${t.notes ? escapeHtml(t.notes) : "—"}</td>
+        <td class="left notes">${txn.notes ? escapeHtml(txn.notes) : "—"}</td>
         <td>${deleteCell}</td>
       </tr>`;
     })
@@ -885,8 +955,8 @@ function updateHistoryPaginationUi(filteredTotal = historyState.total) {
         ? `Showing all ${num(filteredTotal, 0)} of ${num(baseTotal, 0)}`
         : `Showing all ${num(filteredTotal, 0)}`
       : searchActive
-        ? "No matches"
-        : "No items";
+        ? t("progress.noMatches")
+        : t("progress.noItems");
   } else {
     const pages = historyState.totalPages || 0;
     historyPageStatus.textContent = pages
@@ -894,15 +964,15 @@ function updateHistoryPaginationUi(filteredTotal = historyState.total) {
         ? `Page ${historyState.page} of ${pages} · ${num(filteredTotal, 0)} of ${num(baseTotal, 0)}`
         : `Page ${historyState.page} of ${pages} · ${num(filteredTotal, 0)} total`
       : searchActive
-        ? "No matches"
-        : "No items";
+        ? t("progress.noMatches")
+        : t("progress.noItems");
   }
 
   historyHint.textContent = searchActive
     ? `${num(filteredTotal, 0)} match${filteredTotal === 1 ? "" : "es"} · ${num(baseTotal, 0)} total`
     : filteredTotal
       ? `${num(filteredTotal, 0)} transaction${filteredTotal === 1 ? "" : "s"}`
-      : "No transactions yet";
+      : t("progress.noTxYet");
 }
 
 function showHistoryPage() {
@@ -926,16 +996,16 @@ function resetHistoryAccordion() {
   historyState.loading = false;
   historyState.page = 1;
   historyAllTransactions = [];
-  historyHint.textContent = "Open to load buys & sells";
+  historyHint.textContent = t("progress.historyHint");
   historyPagination.hidden = true;
   purchasesBody.innerHTML =
-    `<tr><td colspan="10" class="empty">Open this section to load transaction history.</td></tr>`;
+    `<tr><td colspan="10" class="empty">${t("progress.historyEmpty")}</td></tr>`;
 }
 
 async function loadPositions() {
   const res = await fetch("/api/positions");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Failed to load positions");
+  if (!res.ok) throw new Error(data.detail || t("progress.failPositions"));
   positions = data.positions || [];
   renderSymbolOptions();
   updateOwnedHint();
@@ -943,7 +1013,7 @@ async function loadPositions() {
 
 async function loadPurchaseHistory({ force = false, quiet = false } = {}) {
   if (!(window.SbpAuth?.isAuthenticated?.() ?? false)) {
-    historyHint.textContent = "Sign in to view history";
+    historyHint.textContent = t("progress.signinHistory");
     purchasesBody.innerHTML =
       `<tr><td colspan="10" class="empty">Sign in to view transaction history.</td></tr>`;
     return;
@@ -956,7 +1026,7 @@ async function loadPurchaseHistory({ force = false, quiet = false } = {}) {
 
   historyState.loading = true;
   if (!quiet) {
-    historyHint.textContent = "Loading…";
+    historyHint.textContent = t("common.loading");
     purchasesBody.innerHTML =
       `<tr><td colspan="10" class="empty">Loading transaction history…</td></tr>`;
   }
@@ -970,7 +1040,7 @@ async function loadPurchaseHistory({ force = false, quiet = false } = {}) {
   try {
     const res = await fetch(`/api/transactions?${params.toString()}`);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to load transactions");
+    if (!res.ok) throw new Error(data.detail || t("progress.failTx"));
 
     historyAllTransactions = data.transactions || [];
     historyState.loaded = true;
@@ -980,23 +1050,23 @@ async function loadPurchaseHistory({ force = false, quiet = false } = {}) {
   } catch (err) {
     historyState.loading = false;
     historyState.loaded = false;
-    historyHint.textContent = "Failed to load";
+    historyHint.textContent = t("common.failedLoad");
     purchasesBody.innerHTML =
-      `<tr><td colspan="10" class="empty">${escapeHtml(err.message || "Failed to load transactions")}</td></tr>`;
+      `<tr><td colspan="10" class="empty">${escapeHtml(err.message || t("progress.failTx"))}</td></tr>`;
     historyPagination.hidden = true;
   }
 }
 
-function setPageLoading(isLoading, message = "Loading portfolio…") {
+function setPageLoading(isLoading, message = t("progress.loading")) {
   if (!pageLoader) return;
   pageLoader.hidden = !isLoading;
   if (pageLoaderText) pageLoaderText.textContent = message;
   document.body.classList.toggle("is-loading", Boolean(isLoading));
 }
 
-async function loadProgress({ silent = false } = {}) {
+async function loadProgress({ silent = false, force = false } = {}) {
   if (!silent) {
-    setPageLoading(true, "Loading live prices…");
+    setPageLoading(true, t("progress.loadingLive"));
     currencySections.innerHTML = `
       <div class="inline-loading">
         <div class="spinner spinner-sm" aria-hidden="true"></div>
@@ -1010,7 +1080,7 @@ async function loadProgress({ silent = false } = {}) {
   try {
     progressFullLoaded = false;
     progressCache = null;
-    const data = await window.SbpCache.fetchAndCache(window.SbpCache.KEYS.progress);
+    const data = await window.SbpCache.fetchKey(window.SbpCache.KEYS.progress, { force });
     renderProgress(data, { restoreOpen: openCurrencies });
     await loadPositions();
     if (historyAccordion.open) {
@@ -1019,20 +1089,21 @@ async function loadProgress({ silent = false } = {}) {
       resetHistoryAccordion();
     } else {
       historyState.loaded = false;
-      historyHint.textContent = "Open to load buys & sells";
+      historyHint.textContent = t("progress.historyHint");
     }
     if (!lotsAccordion.open && !silent) {
       resetLotsAccordion();
     }
   } finally {
     if (!silent) setPageLoading(false);
+    else updateProgressRefreshStatus(new Date());
   }
 }
 
 function updateProgressRefreshStatus(when = new Date(), { refreshing = false } = {}) {
   if (!progressStatus) return;
   if (refreshing) {
-    progressStatus.textContent = "Refreshing…";
+    progressStatus.textContent = t("common.refreshing");
     return;
   }
   const time = when.toLocaleTimeString(undefined, {
@@ -1040,21 +1111,7 @@ function updateProgressRefreshStatus(when = new Date(), { refreshing = false } =
     minute: "2-digit",
     second: "2-digit",
   });
-  progressStatus.textContent = `Refreshed data at ${time}`;
-}
-
-function applyProgressSnapshot(data, { restoreOpen = [] } = {}) {
-  renderProgress(data, { restoreOpen });
-}
-
-function bindProgressCacheUpdates() {
-  window.SbpCache.onUpdate(window.SbpCache.KEYS.progress, ({ data }) => {
-    if (!data) return;
-    const openCurrencies = openHoldingsCurrencies();
-    applyProgressSnapshot(data, { restoreOpen: openCurrencies });
-    loadPositions().catch(() => {});
-    updateProgressRefreshStatus(new Date());
-  });
+  progressStatus.textContent = t("progress.refreshed", { time });
 }
 
 function bindProgressRefresh() {
@@ -1065,48 +1122,38 @@ function bindProgressRefresh() {
     window.SbpCache.KEYS.progress,
     {
       onStart: () => updateProgressRefreshStatus(new Date(), { refreshing: true }),
-      onDone: () => updateProgressRefreshStatus(new Date()),
+      onDone: (data) => {
+        applyProgressSnapshot(data, { restoreOpen: openHoldingsCurrencies() });
+        loadPositions().catch(() => {});
+        updateProgressRefreshStatus(new Date());
+      },
       onError: (err) => {
         if (err.code === "RATE_LIMITED") {
-          updateProgressRefreshStatus(new Date());
           if (progressStatus) progressStatus.textContent = err.message;
           return;
         }
-        showError(err.message || "Refresh failed");
+        showError(err.message || t("common.refreshFailed"));
         updateProgressRefreshStatus(new Date());
       },
     }
   );
 }
 
-async function bootProgress() {
-  bindProgressCacheUpdates();
-  bindProgressRefresh();
+function applyProgressSnapshot(data, { restoreOpen = [] } = {}) {
+  renderProgress(data, { restoreOpen });
+}
 
-  const cached = window.SbpCache.get(window.SbpCache.KEYS.progress);
-  if (cached && !cached.summary_only) {
-    applyProgressSnapshot(cached);
-    const age = window.SbpCache.ageMs(window.SbpCache.KEYS.progress);
-    if (age != null) {
-      updateProgressRefreshStatus(new Date(Date.now() - age));
-    }
-    try {
-      await loadPositions();
-    } catch {
-      /* positions are optional for first paint */
-    }
-    setPageLoading(false);
-    return;
-  }
+async function bootProgress() {
+  bindProgressRefresh();
 
   try {
     await loadProgress({ silent: false });
   } catch (err) {
-    showError(err.message || "Failed to load progress");
+    showError(err.message || t("progress.failProgress"));
     setPageLoading(false);
-    if (progressStatus) progressStatus.textContent = "Failed to load";
+    if (progressStatus) progressStatus.textContent = t("common.failedLoad");
     currencySections.innerHTML =
-      `<p class="empty-copy">${escapeHtml(err.message || "Failed to load progress")}</p>`;
+      `<p class="empty-copy">${escapeHtml(err.message || t("progress.failProgress"))}</p>`;
   }
 }
 
@@ -1125,7 +1172,7 @@ fillPriceBtn.addEventListener("click", async () => {
       `/api/quote/${encodeURIComponent(symbol)}?include_dividends=true`
     );
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Could not fetch quote");
+    if (!res.ok) throw new Error(data.detail || t("progress.quoteFailed"));
     document.getElementById("price_per_share").value = data.price;
     const yieldNote =
       data.dividend && data.dividend.pays_dividend
@@ -1140,7 +1187,7 @@ fillPriceBtn.addEventListener("click", async () => {
       showOk(`Filled ${data.symbol} at ${money(data.price, data.currency)}${yieldNote}`);
     }
   } catch (err) {
-    showError(err.message || "Could not fetch live price");
+    showError(err.message || t("progress.liveFailed"));
   } finally {
     fillPriceBtn.disabled = false;
   }
@@ -1155,7 +1202,7 @@ form.addEventListener("submit", async (event) => {
   showError("");
   showOk("");
   submitBtn.disabled = true;
-  submitBtn.textContent = tradeMode === "sell" ? "Saving sale…" : "Saving…";
+  submitBtn.textContent = tradeMode === "sell" ? t("progress.savingSell") : t("progress.savingBuy");
 
   const priceRaw = document.getElementById("price_per_share").value.trim();
   const symbol = symbolInput.value.trim();
@@ -1196,7 +1243,7 @@ form.addEventListener("submit", async (event) => {
       const detail = Array.isArray(data.detail)
         ? data.detail.map((d) => d.msg || d).join(", ")
         : data.detail;
-      throw new Error(detail || "Save failed");
+      throw new Error(detail || t("progress.saveFailed"));
     }
 
     notesInput.value = "";
@@ -1212,20 +1259,25 @@ form.addEventListener("submit", async (event) => {
     historyState.page = 1;
     lotsState.page = 1;
     const lotsWereOpen = lotsAccordion.open;
-    window.SbpCache.invalidatePortfolioCaches();
-    await loadProgress({ silent: true });
-    if (historyAccordion.open) {
-      await loadPurchaseHistory({ force: true, quiet: true });
-    }
-    if (lotsWereOpen) {
-      lotsAccordion.open = true;
-      showLotsPage();
+    try {
+      await loadProgress({ silent: true, force: true });
+      if (historyAccordion.open) {
+        await loadPurchaseHistory({ force: true, quiet: true });
+      }
+      if (lotsWereOpen) {
+        lotsAccordion.open = true;
+        showLotsPage();
+      }
+    } catch (refreshErr) {
+      showError(
+        refreshErr.message || t("progress.savedNoRefresh")
+      );
     }
   } catch (err) {
-    showError(err.message || "Something went wrong");
+    showError(err.message || t("common.somethingWrong"));
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = tradeMode === "sell" ? "Save sale" : "Save purchase";
+    submitBtn.textContent = tradeMode === "sell" ? t("progress.saveSell") : t("progress.saveBuy");
   }
 });
 
@@ -1243,15 +1295,14 @@ lotsBody.addEventListener("click", async (event) => {
 
 async function deletePurchase(id) {
   if (!id) return;
-  if (!confirm("Delete this remaining buy lot?")) return;
+  if (!confirm(t("progress.deleteLot"))) return;
   try {
     const res = await fetch(`/api/purchases/${id}`, { method: "DELETE" });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Delete failed");
-    showOk("Buy lot deleted.");
+    if (!res.ok) throw new Error(data.detail || t("progress.deleteFailed"));
+    showOk(t("progress.deleted"));
     const lotsWereOpen = lotsAccordion.open;
-    window.SbpCache.invalidatePortfolioCaches();
-    await loadProgress({ silent: true });
+    await loadProgress({ silent: true, force: true });
     if (historyAccordion.open) {
       await loadPurchaseHistory({ force: true, quiet: true });
     }
@@ -1260,40 +1311,39 @@ async function deletePurchase(id) {
       showLotsPage();
     }
   } catch (err) {
-    showError(err.message || "Delete failed");
+    showError(err.message || t("progress.deleteFailed"));
   }
 }
 
-currencySections.addEventListener(
-  "toggle",
-  async (event) => {
-    const acc = event.target;
-    if (!(acc instanceof HTMLDetailsElement)) return;
-    if (!acc.classList.contains("holdings-accordion") || !acc.open) return;
-    if (!progressFullLoaded) {
-      try {
-        await ensureFullProgress();
-      } catch (err) {
-        showError(err.message || "Failed to load holdings");
-        const hint = acc.querySelector(".holdings-hint");
-        if (hint) hint.textContent = "Failed to load";
-      }
-    }
-  },
-  true // toggle does not bubble; must listen in capture phase
-);
+currencySections.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-open-holdings]");
+  if (!btn) return;
+  openHoldingsModal(btn.getAttribute("data-open-holdings"));
+});
+
+holdingsModal?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-holdings-modal-close]")) {
+    closeHoldingsModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && holdingsModal && !holdingsModal.hidden) {
+    closeHoldingsModal();
+  }
+});
 
 lotsAccordion.addEventListener("toggle", async () => {
   if (!lotsAccordion.open) return;
   try {
     if (!progressFullLoaded) {
-      lotsHint.textContent = "Loading…";
+      lotsHint.textContent = t("common.loading");
       await ensureFullProgress();
     }
     showLotsPage();
   } catch (err) {
-    showError(err.message || "Failed to load lots");
-    lotsHint.textContent = "Failed to load";
+    showError(err.message || t("progress.failLots"));
+    lotsHint.textContent = t("common.failedLoad");
   }
 });
 
@@ -1351,18 +1401,54 @@ historyNext.addEventListener("click", async () => {
   showHistoryPage();
 });
 
+function applySymbolPrefill() {
+  const ctx = window.SbpListTools?.consumeSymbolContext?.();
+  if (!ctx?.symbol || !symbolInput) return;
+  symbolInput.value = ctx.symbol;
+  if (ctx.shares) document.getElementById("shares").value = ctx.shares;
+  if (ctx.price) document.getElementById("price_per_share").value = ctx.price;
+  setTradeMode("buy");
+}
+
+function focusSymbolHistory(symbol) {
+  if (!symbol) return;
+  closeHoldingsModal();
+  if (historySearch) historySearch.value = symbol;
+  historyState.search = symbol;
+  historyState.page = 1;
+  if (historyAccordion) {
+    historyAccordion.open = true;
+    historyAccordion.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  loadPurchaseHistory({ force: !historyState.loaded }).then(() => showHistoryPage());
+}
+
+function consumeHistorySymbol() {
+  let symbol = "";
+  try {
+    symbol = sessionStorage.getItem("sbp:history-symbol") || "";
+    if (symbol) sessionStorage.removeItem("sbp:history-symbol");
+  } catch {
+    symbol = "";
+  }
+  if (symbol) focusSymbolHistory(symbol);
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   tradeDate.value = todayLocalISO();
+  applySymbolPrefill();
   historyPageSize.value = historyState.pageSize;
   lotsPageSize.value = lotsState.pageSize;
   setTradeMode("buy");
+  window.SbpListTools?.bindRowActions?.(document.getElementById("holdings-modal"));
   bindSortableTable(lotsTable, lotsState, showLotsPage);
   bindSortableTable(historyTable, historyState, () => {
     if (historyAccordion.open && historyState.loaded) showHistoryPage();
   });
 
+  window.SbpProgress = { focusSymbolHistory };
   const start = () => {
-    bootProgress();
+    bootProgress().finally(() => consumeHistorySymbol());
   };
   if (window.SbpAuth?.whenAuthReady) {
     window.SbpAuth.whenAuthReady(start);

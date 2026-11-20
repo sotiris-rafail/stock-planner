@@ -2,58 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sign in · Stock Buy Planner</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
 </head>
-<body class="md-app auth-page">
+<body class="md-app auth-page bento-app page-auth has-site-footer">
   <div class="page auth-shell">
     <nav class="nav md-navigation-bar" aria-label="Main">
-      <a href="/login" class="active"><span class="material-symbols-outlined" aria-hidden="true">login</span>Sign in</a>
-      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
-      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
-      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
+      <a href="/login" class="active"><span class="material-symbols-outlined" aria-hidden="true">login</span><span data-i18n="nav.login">Sign in</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/pricing"><span class="material-symbols-outlined" aria-hidden="true">sell</span><span data-i18n="nav.pricing">Pricing</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
     </nav>
 
     <header class="header auth-header">
-      <p class="eyebrow">Stock Buy Planner</p>
-      <h1>Sign in to your account</h1>
-      <p class="lede">
-        Each account has its own portfolio, watchlist, and progress data.
-      </p>
+      <p class="eyebrow" data-i18n="plan.eyebrow">Stock Buy Planner</p>
+      <h1 id="auth-heading" data-i18n="login.title">Sign in</h1>
+      <p class="lede" data-i18n="login.lede">Each account has its own portfolio, watchlist, and progress data.</p>
     </header>
 
-    <main class="layout auth-layout">
-      <section class="panel form-panel auth-panel">
+    <main class="bento-grid">
+      <section class="panel form-panel auth-panel bento-tile bento-span-center">
         <div class="trade-toggle" role="tablist" aria-label="Authentication mode">
-          <button type="button" class="trade-tab active" id="tab-login" data-mode="login">Sign in</button>
-          <button type="button" class="trade-tab" id="tab-register" data-mode="register">Create account</button>
+          <button type="button" class="trade-tab active" id="tab-login" data-mode="login" data-i18n="nav.signin">Sign in</button>
+          <button type="button" class="trade-tab" id="tab-register" data-mode="register" data-i18n="login.create">Create account</button>
         </div>
 
         <form id="auth-form">
-          <label>
-            Email
-            <input id="auth-email" name="email" type="email" autocomplete="username" required />
+          <label class="md-field">
+            <input id="auth-email" name="email" type="email" autocomplete="username" placeholder=" " required />
+            <span class="md-field-label" data-i18n="login.email">Email</span>
           </label>
 
-          <label>
-            Password
-            <input id="auth-password" name="password" type="password" autocomplete="current-password" required />
+          <label class="md-field">
+            <input id="auth-password" name="password" type="password" autocomplete="current-password" placeholder=" " required />
+            <span class="md-field-label" data-i18n="login.password">Password</span>
           </label>
 
-          <p class="hint auth-password-rules">
-            At least 10 characters with upper &amp; lower case, 2 numbers (not adjacent),
-            and 2 symbols.
+          <p class="hint auth-password-rules" id="auth-password-rules" hidden>
+            <span data-i18n="login.rules">At least 10 characters with upper &amp; lower case, 2 numbers (not adjacent), and 2 symbols.</span>
+          </p>
+          <p class="mail-off-note" id="register-mail-note" hidden data-i18n="login.noRecovery">
+            Password recovery is not possible while smtp.enabled is false. We cannot email a reset link. Choose a password you will remember.
           </p>
 
-          <button type="submit" id="auth-submit-btn">Sign in</button>
+          <button type="submit" id="auth-submit-btn" data-i18n="nav.signin">Sign in</button>
           <p class="auth-extra" id="forgot-wrap">
-            <a href="/forgot-password">Forgot password?</a>
+            <a href="/forgot-password" data-i18n="login.forgot">Forgot password?</a>
           </p>
           <p id="auth-error" class="error" hidden></p>
         </form>
@@ -61,7 +75,9 @@
     </main>
   </div>
 
-  <script src="/static/auth.js"></script>
-  <script src="/static/login.js"></script>
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/login.js?v=20261109a"></script>
 </body>
 </html>

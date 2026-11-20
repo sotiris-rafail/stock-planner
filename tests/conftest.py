@@ -22,7 +22,11 @@ def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DATA_DIR", tmp_path)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "portfolio.db")
     db.init_db()
+    from live_cache import clear_memory_cache
+
+    clear_memory_cache()
     yield tmp_path
+    clear_memory_cache()
     db.close_db()
 
 
@@ -57,9 +61,11 @@ def quote():
 def client(isolated_db, monkeypatch, quote):
     monkeypatch.setattr("scheduler.start_scheduler", lambda: None)
     monkeypatch.setattr("scheduler.stop_scheduler", lambda: None)
+    monkeypatch.setattr("live_cache.start_cache_warmup", lambda: None)
+    monkeypatch.setattr("main.start_cache_warmup", lambda: None)
     monkeypatch.setattr("app_logging.setup_logging", lambda: None)
 
-    def fake_quote(symbol, lookback_months=12, include_dividends=True):
+    def fake_quote(symbol, lookback_months=12, include_dividends=True, source="yahoo"):
         from dataclasses import replace
 
         requested = symbol.upper().strip()
@@ -67,11 +73,17 @@ def client(isolated_db, monkeypatch, quote):
             quote,
             symbol=requested if requested != "VUAA.EU" else "VUAA.L",
             requested_symbol="VUAA.EU" if requested == "VUAA.EU" else None,
+            price_source=source or "yahoo",
         )
 
     monkeypatch.setattr("stock_service.fetch_quote", fake_quote)
     monkeypatch.setattr("main.fetch_quote", fake_quote)
     monkeypatch.setattr("portfolio.fetch_quote", fake_quote)
+    monkeypatch.setattr("budget_plan.fetch_quote", fake_quote)
+    monkeypatch.setattr(
+        "budget_plan.get_fx_rate",
+        lambda fr, to, on_date=None: 1.1 if fr != to else 1.0,
+    )
     monkeypatch.setattr(
         "stock_service.fetch_dividends",
         lambda symbol: {
@@ -97,15 +109,13 @@ def client(isolated_db, monkeypatch, quote):
         "portfolio.convert_amount",
         lambda amount, fr, to, on_date=None: amount * (1.1 if fr != to else 1.0),
     )
-    monkeypatch.setattr("suggestions.build_suggestions", lambda: {"as_of": "now", "items": []})
-    monkeypatch.setattr("main.build_suggestions", lambda: {"as_of": "now", "items": []})
     monkeypatch.setattr(
-        "dividend_ideas.build_dividend_ideas",
-        lambda user_id=None: {"as_of": "now", "items": [], "user_id": user_id},
+        "suggestions.build_suggestions",
+        lambda **kwargs: {"as_of": "now", "items": []},
     )
     monkeypatch.setattr(
-        "main.build_dividend_ideas",
-        lambda user_id=None: {"as_of": "now", "items": [], "user_id": user_id},
+        "dividend_ideas.build_dividend_ideas",
+        lambda user_id=None, **kwargs: {"as_of": "now", "items": [], "user_id": user_id},
     )
 
     from fastapi.testclient import TestClient

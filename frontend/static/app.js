@@ -1,3 +1,6 @@
+const LAST_SEARCH_KEY = "sbp:plan:lastSearch";
+const DEFAULT_SYMBOL = "DTE.DE";
+
 const form = document.getElementById("plan-form");
 const submitBtn = document.getElementById("submit-btn");
 const formError = document.getElementById("form-error");
@@ -47,31 +50,87 @@ function isYearly() {
   return yearlyToggle.checked;
 }
 
+const t = (key, vars) => (window.SbpI18n && window.SbpI18n.t(key, vars)) || key;
+
 function syncFrequencyUi() {
   const yearly = isYearly();
-  periodsLabel.textContent = yearly ? "Years" : "Months";
+  periodsLabel.textContent = yearly ? t("plan.years") : t("plan.months");
   growthLabel.textContent = yearly
-    ? "Growth override % / year"
-    : "Growth override % / month";
+    ? t("plan.growthYear")
+    : t("plan.growth");
   periodsInput.max = yearly ? "40" : "120";
   if (yearly && Number(periodsInput.value) > 40) {
     periodsInput.value = "40";
   }
 
-  pageTitle.textContent = yearly
-    ? "How much do you need each year?"
-    : "How much do you need each month?";
-  pageLede.textContent = yearly
-    ? "Pick a stock, set how many shares you want and over how many years. We pull a live price and estimate yearly growth from recent history."
-    : "Pick a stock, set how many shares you want and over how many months. We pull a live price and estimate monthly growth from recent history.";
-  periodCol.textContent = yearly ? "Year" : "Month";
-  growthCol.textContent = yearly ? "Year growth" : "Month growth";
-  disclaimer.textContent = yearly
-    ? "Projections use live market data and a historical average yearly return (compounded from monthly history). Past performance is not a guarantee of future results."
-    : "Projections use live market data and a historical average monthly return. Past performance is not a guarantee of future results.";
-  placeholderCopy.innerHTML = yearly
-    ? "Enter a ticker and hit calculate. Defaults are set to Deutsche Telekom (<strong>DTE.DE</strong>): 50 shares over 10 years."
-    : "Enter a ticker and hit calculate. Defaults are set to Deutsche Telekom (<strong>DTE.DE</strong>): 50 shares over 10 months.";
+  pageTitle.textContent = yearly ? t("plan.titleYear") : t("plan.title");
+  pageLede.textContent = yearly ? t("plan.ledeYear") : t("plan.lede");
+  periodCol.textContent = yearly ? t("plan.year") : t("plan.month");
+  growthCol.textContent = yearly ? t("plan.yearGrowth") : t("plan.monthGrowth");
+  disclaimer.textContent = yearly ? t("plan.disclaimerYear") : t("plan.disclaimer");
+  placeholderCopy.innerHTML = yearly ? t("plan.placeholderYear") : t("plan.placeholder");
+}
+
+function readLastSearch() {
+  try {
+    const raw = localStorage.getItem(LAST_SEARCH_KEY) || sessionStorage.getItem(LAST_SEARCH_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastSearch(state) {
+  try {
+    localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function persistCurrentSearch() {
+  const symbol = document.getElementById("symbol").value.trim();
+  if (!symbol) return;
+  writeLastSearch(currentSearchState(symbol));
+}
+
+function applyLastSearch(state) {
+  if (!state) return;
+  const symbol = (state.symbol || "").trim();
+  if (symbol) document.getElementById("symbol").value = symbol;
+  if (state.total_shares != null) {
+    document.getElementById("total_shares").value = state.total_shares;
+  }
+  if (state.periods != null) periodsInput.value = state.periods;
+  if (state.lookback_months != null) {
+    document.getElementById("lookback_months").value = state.lookback_months;
+  }
+  yearlyToggle.checked = Boolean(state.yearly);
+  const growth = document.getElementById("growth_override_pct");
+  if (state.growth_override_pct == null || state.growth_override_pct === "") {
+    growth.value = "";
+  } else {
+    growth.value = state.growth_override_pct;
+  }
+  const source = document.getElementById("price_source");
+  if (source && (state.price_source === "yahoo" || state.price_source === "stooq")) {
+    source.value = state.price_source;
+  }
+}
+
+function currentSearchState(resolvedSymbol) {
+  const growthRaw = document.getElementById("growth_override_pct").value.trim();
+  return {
+    symbol: (resolvedSymbol || document.getElementById("symbol").value).trim(),
+    total_shares: Number(document.getElementById("total_shares").value),
+    periods: Number(periodsInput.value),
+    lookback_months: Number(document.getElementById("lookback_months").value),
+    yearly: isYearly(),
+    growth_override_pct: growthRaw === "" ? null : Number(growthRaw),
+    price_source: document.getElementById("price_source")?.value || "yahoo",
+  };
 }
 
 function showError(message) {
@@ -87,7 +146,7 @@ function resetDividendAccordion() {
     loading: false,
     data: null,
   };
-  dividendHint.textContent = "Open to load yield and payout history";
+  dividendHint.textContent = t("plan.divHint");
   dividendPanel.innerHTML =
     `<p class="empty-copy">Open this section to load dividend data.</p>`;
 }
@@ -97,7 +156,7 @@ function renderDividendContent(payload) {
   const currency = payload.currency || (currentPlan && currentPlan.currency) || "USD";
 
   if (!dividend.pays_dividend) {
-    dividendHint.textContent = "No dividends reported";
+    dividendHint.textContent = t("plan.divNone");
     dividendPanel.innerHTML =
       `<p class="empty-copy">No dividend data reported for ${payload.symbol || "this stock"}.</p>`;
     return;
@@ -105,7 +164,7 @@ function renderDividendContent(payload) {
 
   const yieldText =
     dividend.yield_pct == null ? "—" : `${num(dividend.yield_pct, 2)}%`;
-  dividendHint.textContent = `Yield ${yieldText}`;
+  dividendHint.textContent = t("plan.yield", { value: yieldText });
 
   const payments = dividend.recent_payments || [];
   const rows = payments.length
@@ -152,14 +211,14 @@ async function loadDividendsIfNeeded() {
   if (dividendCache.loading) return;
 
   dividendCache.loading = true;
-  dividendHint.textContent = "Loading…";
+  dividendHint.textContent = t("common.loading");
   dividendPanel.innerHTML = `<p class="empty-copy">Loading dividend data…</p>`;
 
   try {
     const res = await fetch(`/api/dividends/${encodeURIComponent(symbol)}`);
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || "Failed to load dividends");
+      throw new Error(data.detail || t("plan.divFailed"));
     }
     dividendCache = {
       symbol,
@@ -170,8 +229,8 @@ async function loadDividendsIfNeeded() {
     renderDividendContent(data);
   } catch (err) {
     dividendCache.loading = false;
-    dividendHint.textContent = "Failed to load";
-    dividendPanel.innerHTML = `<p class="error">${err.message || "Failed to load dividends"}</p>`;
+    dividendHint.textContent = t("common.failedLoad");
+    dividendPanel.innerHTML = `<p class="error">${err.message || t("plan.divFailed")}</p>`;
   }
 }
 
@@ -187,8 +246,8 @@ function render(plan) {
       ? ""
       : `<span class="${change >= 0 ? "up" : "down"}">${change >= 0 ? "+" : ""}${num(change, 2)}% today</span>`;
 
-  periodCol.textContent = plan.period_label || (yearly ? "Year" : "Month");
-  growthCol.textContent = yearly ? "Year growth" : "Month growth";
+  periodCol.textContent = plan.period_label || (yearly ? t("plan.year") : t("plan.month"));
+  growthCol.textContent = yearly ? t("plan.yearGrowth") : t("plan.monthGrowth");
 
   quoteBar.innerHTML = `
     <span class="name stock-name">
@@ -197,10 +256,15 @@ function render(plan) {
           onerror="const w=this.parentElement; this.remove(); const f=w&&w.querySelector('.stock-icon-fallback'); if(f) f.hidden=false;" />
         <span class="stock-icon-fallback" hidden>${(plan.symbol || "?").replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase() || "?"}</span>
       </span>
-      <span class="stock-name-text">${plan.company_name} (${plan.symbol})</span>
+      <span class="stock-name-text"><button type="button" class="sheet-name" data-open-sheet="${plan.symbol}">${plan.company_name} (${plan.symbol})</button></span>
     </span>
     <span class="meta">${money(plan.current_price, c)} · ${changeHtml}</span>
     <span class="meta">Est. ${periodWord}ly growth: ${num(growthPct, 2)}%</span>
+    <span class="meta data-chip">${t("plan.source", { source: plan.price_source_label || plan.price_source || t("common.yahoo") })}${
+      plan.quote_as_of
+        ? ` · ${new Date(plan.quote_as_of).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
+        : ""
+    }</span>
     ${plan.requested_symbol ? `<span class="meta">Resolved from ${plan.requested_symbol}</span>` : ""}
   `;
 
@@ -242,14 +306,65 @@ function render(plan) {
     })
     .join("");
 
+  const scheduleCards = document.getElementById("schedule-cards");
+  if (scheduleCards) {
+    scheduleCards.innerHTML = plan.schedule
+      .map((row) => {
+        const period = row.period ?? row.month;
+        const periodGrowth = row.period_growth ?? row.month_growth;
+        return `<article class="plan-period-card">
+          <h3>${yearly ? t("plan.year") : t("plan.month")} ${period}</h3>
+          <dl>
+            <div><dt>${t("plan.price")}</dt><dd>${money(row.projected_price, c)}</dd></div>
+            <div><dt>${t("plan.sharesBought")}</dt><dd>${num(row.shares_bought, 4)}</dd></div>
+            <div><dt>${t("plan.cost")}</dt><dd>${money(row.cost, c)}</dd></div>
+            <div><dt>${t("plan.owned")}</dt><dd>${num(row.shares_owned, 4)}</dd></div>
+            <div><dt>${yearly ? t("plan.yearGrowth") : t("plan.monthGrowth")}</dt><dd class="${growthClass(periodGrowth)}">${money(periodGrowth, c)}</dd></div>
+          </dl>
+        </article>`;
+      })
+      .join("");
+  }
+
   resetDividendAccordion();
   placeholder.hidden = true;
   results.hidden = false;
+
+  const followups = document.getElementById("plan-followups");
+  if (followups) {
+    const first = (plan.schedule || [])[0] || {};
+    const shares = first.shares_bought ?? "";
+    const price = first.projected_price ?? plan.current_price;
+    followups.hidden = false;
+    followups.innerHTML = `
+      <button type="button" class="row-action" data-log-buy>${t("plan.logBuy")}</button>
+      <button type="button" class="row-action" data-open-ideas="${plan.symbol}">${t("plan.openIdeas")}</button>
+      <button type="button" class="row-action" data-open-suggestions="${plan.symbol}">${t("plan.openSuggestions")}</button>
+    `;
+    followups.querySelector("[data-log-buy]")?.addEventListener("click", () => {
+      window.SbpListTools?.openInProgress?.(plan.symbol, {
+        shares,
+        price,
+        currency: c,
+      });
+    });
+    followups.querySelector("[data-open-ideas]")?.addEventListener("click", () => {
+      window.SbpListTools?.openInIdeas?.(plan.symbol);
+    });
+    followups.querySelector("[data-open-suggestions]")?.addEventListener("click", () => {
+      window.SbpListTools?.openInSuggestions?.(plan.symbol);
+    });
+  }
 }
 
 yearlyToggle.addEventListener("change", () => {
   syncFrequencyUi();
+  persistCurrentSearch();
 });
+
+document.getElementById("symbol").addEventListener("change", persistCurrentSearch);
+document.getElementById("symbol").addEventListener("blur", persistCurrentSearch);
+document.getElementById("price_source")?.addEventListener("change", persistCurrentSearch);
 
 dividendAccordion.addEventListener("toggle", () => {
   if (dividendAccordion.open) {
@@ -261,7 +376,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   showError("");
   submitBtn.disabled = true;
-  submitBtn.textContent = "Calculating…";
+  submitBtn.textContent = t("plan.calculating");
 
   const growthRaw = document.getElementById("growth_override_pct").value.trim();
   const body = {
@@ -271,6 +386,7 @@ form.addEventListener("submit", async (event) => {
     frequency: isYearly() ? "yearly" : "monthly",
     lookback_months: Number(document.getElementById("lookback_months").value),
     growth_override_pct: growthRaw === "" ? null : Number(growthRaw),
+    price_source: document.getElementById("price_source")?.value || "yahoo",
   };
 
   try {
@@ -281,18 +397,25 @@ form.addEventListener("submit", async (event) => {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || "Request failed");
+      throw new Error(data.detail || t("plan.requestFailed"));
     }
+    writeLastSearch(currentSearchState(body.symbol));
     render(data);
   } catch (err) {
-    showError(err.message || "Something went wrong");
+    showError(err.message || t("common.somethingWrong"));
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Calculate plan";
+    submitBtn.textContent = t("plan.submit");
   }
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  const last = readLastSearch();
+  if (last?.symbol) {
+    applyLastSearch(last);
+  } else {
+    document.getElementById("symbol").value = DEFAULT_SYMBOL;
+  }
   syncFrequencyUi();
   form.requestSubmit();
 });

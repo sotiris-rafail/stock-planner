@@ -1,12 +1,67 @@
 secret_key: ${APP_SECRET_KEY}
 
-# Silent background quote refresh interval in minutes.
-# Value is loaded from the property key cron_job_silent_stock_refresh (default 15).
 cron_job: ${cron_job_silent_stock_refresh}
+suggestion_refresh: ${suggestion.refresh.time}
 
 smtp:
+  enabled: ${smtp.enabled}
   host: ${SMTP_HOST}
   port: ${SMTP_PORT}
   from: ${SMTP_FROM}
   user: ${SMTP_USER}
   password: ${SMTP_PASSWORD}
+
+export:
+  enabled: ${export.enabled}
+
+delete:
+  enabled: ${delete.enabled}
+
+backup:
+  enabled: ${backup.enabled}
+  interval_hours: ${backup.interval.hours}
+  keep: ${backup.keep}
+  directory: ${backup.directory}
+
+billing:
+  enabled: ${billing.enabled}
+  enforce_paywall: ${billing.enforce_paywall}
+  default_provider: ${billing.default_provider}
+  enabled_providers: ${billing.enabled_providers}
+  trial_days: ${billing.trial_days}
+  public_url: ${billing.public_url}
+
+entitlements:
+  free:
+    max_budget_plans: ${entitlements.free.max_budget_plans}
+    max_plan_months: ${entitlements.free.max_plan_months}
+    max_watchlist: ${entitlements.free.max_watchlist}
+  pro:
+    max_plan_months: ${entitlements.pro.max_plan_months}
+    max_watchlist: ${entitlements.pro.max_watchlist}
+
+site:
+  guest_home: ${site.guest_home}
+
+stripe:
+  secret_key: ${STRIPE_SECRET_KEY}
+  webhook_secret: ${STRIPE_WEBHOOK_SECRET}
+  price_monthly: ${STRIPE_PRICE_MONTHLY}
+  price_yearly: ${STRIPE_PRICE_YEARLY}
+
+mollie:
+  api_key: ${MOLLIE_API_KEY}
+  amount_monthly: ${MOLLIE_AMOUNT_MONTHLY}
+  amount_yearly: ${MOLLIE_AMOUNT_YEARLY}
+  currency: ${MOLLIE_CURRENCY}
+  description: ${MOLLIE_DESCRIPTION}
+  checkout_implemented: ${MOLLIE_CHECKOUT_IMPLEMENTED}
+  webhook_implemented: ${MOLLIE_WEBHOOK_IMPLEMENTED}
+
+paypal:
+  client_id: ${PAYPAL_CLIENT_ID}
+  client_secret: ${PAYPAL_CLIENT_SECRET}
+  plan_monthly: ${PAYPAL_PLAN_MONTHLY}
+  plan_yearly: ${PAYPAL_PLAN_YEARLY}
+  checkout_implemented: ${PAYPAL_CHECKOUT_IMPLEMENTED}
+  webhook_implemented: ${PAYPAL_WEBHOOK_IMPLEMENTED}

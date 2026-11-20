@@ -1,3 +1,4 @@
+const t = (key, vars) => (window.SbpI18n && window.SbpI18n.t(key, vars)) || key;
 const form = document.getElementById("forgot-form");
 const emailInput = document.getElementById("forgot-email");
 const submitBtn = document.getElementById("forgot-submit-btn");
@@ -9,6 +10,33 @@ function showError(message) {
   errorEl.hidden = !message;
   if (message) okEl.hidden = true;
 }
+
+async function applyEmailAvailability() {
+  try {
+    const data = window.SbpAppConfig?.fetch
+      ? await window.SbpAppConfig.fetch()
+      : await fetch("/api/config", { credentials: "include" }).then((r) => r.json());
+    const smtpOn = window.SbpI18n?.parseConfigFlag
+      ? window.SbpI18n.parseConfigFlag(data.smtp_enabled, false)
+      : data.smtp_enabled !== false;
+    if (smtpOn) return;
+    const message = t("forgot.smtpOff");
+    if (emailInput) emailInput.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    const note = document.getElementById("mail-off-note");
+    const lede = document.querySelector('[data-i18n="forgot.lede"]');
+    if (note) {
+      note.hidden = false;
+      note.textContent = message;
+    }
+    if (lede) lede.textContent = message;
+    showError(message);
+  } catch {
+    /* keep the form usable if config cannot be loaded */
+  }
+}
+
+applyEmailAvailability();
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -29,15 +57,15 @@ form?.addEventListener("submit", async (event) => {
       const detail = Array.isArray(data.detail)
         ? data.detail.map((item) => item.msg || item).join(", ")
         : data.detail;
-      throw new Error(detail || "Could not send reset email");
+      throw new Error(detail || t("forgot.failed"));
     }
     okEl.textContent =
       "If that email is registered, a reset link is on its way. Check your inbox, or data/outbox if you are running locally without SMTP.";
     okEl.hidden = false;
   } catch (err) {
-    showError(err.message || "Could not send reset email");
+    showError(err.message || t("forgot.failed"));
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Send reset link";
+    submitBtn.textContent = t("forgot.send");
   }
 });

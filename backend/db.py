@@ -49,12 +49,46 @@ def _connect() -> Iterator[sqlite3.Connection]:
             raise
 
 
+def create_database_backup(dest: Path) -> Path:
+    """Copy the live SQLite file to dest using the online backup API."""
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.unlink()
+    with _connect() as source:
+        target = sqlite3.connect(str(dest))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    return dest
+
+
 def close_db() -> None:
     global _DB_CONN
     with _DB_LOCK:
         if _DB_CONN is not None:
             _DB_CONN.close()
             _DB_CONN = None
+
+
+def restore_database_from(source: Path) -> None:
+    """Replace the live SQLite file with a backup copy, then reopen it."""
+    source = Path(source)
+    if not source.is_file():
+        raise FileNotFoundError(str(source))
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = DB_PATH.with_suffix(".restore.tmp")
+    close_db()
+    src = sqlite3.connect(f"file:{source.resolve().as_posix()}?mode=ro", uri=True)
+    dest = sqlite3.connect(str(tmp))
+    try:
+        src.backup(dest)
+    finally:
+        dest.close()
+        src.close()
+    tmp.replace(DB_PATH)
+    init_db()
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -166,6 +200,73 @@ def init_db() -> None:
         )
         _migrate_user_scope(conn)
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                monthly_report_enabled INTEGER NOT NULL DEFAULT 0,
+                report_email TEXT NOT NULL DEFAULT '',
+                last_sent_month TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budget_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                start_month TEXT NOT NULL,
+                end_month TEXT NOT NULL,
+                monthly_amount REAL,
+                currency TEXT NOT NULL DEFAULT 'EUR',
+                include_unplanned INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_budget_plans_user ON budget_plans(user_id)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budget_plan_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_id INTEGER NOT NULL REFERENCES budget_plans(id) ON DELETE CASCADE,
+                symbol TEXT NOT NULL,
+                requested_symbol TEXT,
+                company_name TEXT,
+                monthly_amount REAL NOT NULL CHECK (monthly_amount > 0),
+                position INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_budget_plan_items_plan ON budget_plan_items(plan_id)"
+        )
+        # Sells shrink or delete buy lots (FIFO); this keeps what each sell consumed
+        # so spending history inside a budget plan survives later sells.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sale_lot_allocations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+                symbol TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                purchased_at TEXT NOT NULL,
+                shares REAL NOT NULL CHECK (shares > 0),
+                price_per_share REAL NOT NULL,
+                sold_at TEXT NOT NULL,
+                sale_price_per_share REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sale_lot_allocations_user ON sale_lot_allocations(user_id)"
+        )
+
 
 def _migrate_user_scope(conn: sqlite3.Connection) -> None:
     for table in ("purchases", "sales"):
@@ -216,16 +317,33 @@ def _migrate_user_scope(conn: sqlite3.Connection) -> None:
             """
         )
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notification_settings (
-            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-            monthly_report_enabled INTEGER NOT NULL DEFAULT 0,
-            report_email TEXT NOT NULL DEFAULT '',
-            last_sent_month TEXT
+    watchlist_columns = _table_columns(conn, "watchlist_items")
+    if "price_source" not in watchlist_columns:
+        conn.execute(
+            "ALTER TABLE watchlist_items ADD COLUMN price_source TEXT NOT NULL DEFAULT 'yahoo'"
         )
-        """
-    )
+
+    user_columns = _table_columns(conn, "users")
+    if "subscription_tier" not in user_columns:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN subscription_tier TEXT NOT NULL DEFAULT 'free'"
+        )
+    if "stripe_customer_id" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+    if "stripe_subscription_id" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT")
+    if "subscription_status" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN subscription_status TEXT")
+    if "current_period_end" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN current_period_end TEXT")
+    if "trial_ends_at" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN trial_ends_at TEXT")
+    if "billing_provider" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN billing_provider TEXT")
+    if "billing_customer_id" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN billing_customer_id TEXT")
+    if "billing_subscription_id" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN billing_subscription_id TEXT")
 
 
 def create_user(*, email_encrypted: str, password_hash: str) -> int:
@@ -244,8 +362,42 @@ def create_user(*, email_encrypted: str, password_hash: str) -> int:
 def get_user_by_id(user_id: int) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, email_encrypted, password_hash, created_at FROM users WHERE id = ?",
+            """
+            SELECT
+                id,
+                email_encrypted,
+                password_hash,
+                created_at,
+                subscription_tier,
+                stripe_customer_id,
+                stripe_subscription_id,
+                subscription_status,
+                current_period_end,
+                trial_ends_at,
+                billing_provider,
+                billing_customer_id,
+                billing_subscription_id
+            FROM users
+            WHERE id = ?
+            """,
             (user_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_stripe_customer(customer_id: str) -> dict | None:
+    cid = (customer_id or "").strip()
+    if not cid:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE stripe_customer_id = ? OR billing_customer_id = ?
+            LIMIT 1
+            """,
+            (cid, cid),
         ).fetchone()
     return dict(row) if row else None
 
@@ -273,6 +425,19 @@ def list_users() -> list[dict]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def delete_user(*, user_id: int) -> bool:
+    with _connect() as conn:
+        conn.execute("DELETE FROM watchlist_items WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM budget_plans WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sale_lot_allocations WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM purchases WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sales WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM notification_settings WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM dividend_ideas_cache WHERE user_id = ?", (user_id,))
+        cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        return cur.rowcount > 0
 
 
 def update_user_password(*, user_id: int, password_hash: str) -> bool:
@@ -428,6 +593,7 @@ def execute_sale(
         cost_basis = 0.0
         inferred_currency = currency
         inferred_name = company_name
+        consumed: list[tuple[str, str, float, float]] = []
 
         for lot in lots:
             if remaining <= 1e-12:
@@ -435,6 +601,14 @@ def execute_sale(
             lot_shares = float(lot["shares"])
             take = min(lot_shares, remaining)
             cost_basis += take * float(lot["price_per_share"])
+            consumed.append(
+                (
+                    (lot["currency"] or "USD").upper(),
+                    lot["purchased_at"],
+                    round(take, 8),
+                    float(lot["price_per_share"]),
+                )
+            )
             if not inferred_currency:
                 inferred_currency = lot["currency"]
             if not inferred_name:
@@ -476,8 +650,29 @@ def execute_sale(
             ),
         )
         sale_id = cur.lastrowid
-
-        sale_id = cur.lastrowid
+        conn.executemany(
+            """
+            INSERT INTO sale_lot_allocations
+                (user_id, sale_id, symbol, currency, purchased_at, shares,
+                 price_per_share, sold_at, sale_price_per_share)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    user_id,
+                    sale_id,
+                    symbol,
+                    lot_currency,
+                    purchased_at,
+                    taken,
+                    lot_price,
+                    sold_at,
+                    price_per_share,
+                )
+                for lot_currency, purchased_at, taken, lot_price in consumed
+                if taken > 0
+            ],
+        )
 
     return get_sale(sale_id, user_id=user_id)
 
@@ -778,6 +973,7 @@ def add_watchlist_item(
     currency: str,
     added_at: str,
     price_at_add: float,
+    price_source: str = "yahoo",
 ) -> dict:
     created_at = datetime.now(timezone.utc).isoformat()
     sym = symbol.upper().strip()
@@ -787,8 +983,8 @@ def add_watchlist_item(
                 """
                 INSERT INTO watchlist_items (
                     user_id, symbol, requested_symbol, company_name, asset_type,
-                    currency, added_at, price_at_add, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    currency, added_at, price_at_add, created_at, price_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -800,6 +996,7 @@ def add_watchlist_item(
                     added_at,
                     price_at_add,
                     created_at,
+                    (price_source or "yahoo").strip().lower(),
                 ),
             )
             item_id = cur.lastrowid
@@ -911,3 +1108,241 @@ def list_users_with_monthly_report_enabled() -> list[dict]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_sale_lot_allocations(*, user_id: int) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM sale_lot_allocations
+            WHERE user_id = ?
+            ORDER BY purchased_at ASC, id ASC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _insert_budget_plan_items(
+    conn: sqlite3.Connection, plan_id: int, items: list[dict]
+) -> None:
+    conn.executemany(
+        """
+        INSERT INTO budget_plan_items
+            (plan_id, symbol, requested_symbol, company_name, monthly_amount, position)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                plan_id,
+                item["symbol"].upper().strip(),
+                item.get("requested_symbol"),
+                item.get("company_name"),
+                float(item["monthly_amount"]),
+                index,
+            )
+            for index, item in enumerate(items)
+        ],
+    )
+
+
+def _budget_plan_to_dict(row: sqlite3.Row, items: list[sqlite3.Row]) -> dict:
+    data = dict(row)
+    data["monthly_amount"] = (
+        float(data["monthly_amount"]) if data.get("monthly_amount") is not None else None
+    )
+    data["include_unplanned"] = bool(data.get("include_unplanned"))
+    data["currency"] = (data.get("currency") or "EUR").upper()
+    data["items"] = [
+        {
+            "id": item["id"],
+            "symbol": item["symbol"],
+            "requested_symbol": item["requested_symbol"],
+            "company_name": item["company_name"],
+            "monthly_amount": float(item["monthly_amount"]),
+        }
+        for item in items
+    ]
+    return data
+
+
+def _load_budget_plan(conn: sqlite3.Connection, plan_id: int, user_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM budget_plans WHERE id = ? AND user_id = ?",
+        (plan_id, user_id),
+    ).fetchone()
+    if not row:
+        return None
+    items = conn.execute(
+        "SELECT * FROM budget_plan_items WHERE plan_id = ? ORDER BY position ASC, id ASC",
+        (plan_id,),
+    ).fetchall()
+    return _budget_plan_to_dict(row, items)
+
+
+def create_budget_plan(
+    *,
+    user_id: int,
+    name: str,
+    start_month: str,
+    end_month: str,
+    monthly_amount: float | None,
+    currency: str,
+    include_unplanned: bool,
+    items: list[dict],
+) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO budget_plans
+                (user_id, name, start_month, end_month, monthly_amount, currency,
+                 include_unplanned, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                name,
+                start_month,
+                end_month,
+                monthly_amount,
+                currency.upper(),
+                1 if include_unplanned else 0,
+                now,
+                now,
+            ),
+        )
+        plan_id = int(cur.lastrowid)
+        _insert_budget_plan_items(conn, plan_id, items)
+        plan = _load_budget_plan(conn, plan_id, user_id)
+    if plan is None:
+        raise RuntimeError("Failed to load budget plan after insert")
+    return plan
+
+
+def update_budget_plan(
+    plan_id: int,
+    *,
+    user_id: int,
+    name: str,
+    start_month: str,
+    end_month: str,
+    monthly_amount: float | None,
+    currency: str,
+    include_unplanned: bool,
+    items: list[dict],
+) -> dict | None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE budget_plans
+            SET name = ?, start_month = ?, end_month = ?, monthly_amount = ?,
+                currency = ?, include_unplanned = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (
+                name,
+                start_month,
+                end_month,
+                monthly_amount,
+                currency.upper(),
+                1 if include_unplanned else 0,
+                now,
+                plan_id,
+                user_id,
+            ),
+        )
+        if cur.rowcount == 0:
+            return None
+        conn.execute("DELETE FROM budget_plan_items WHERE plan_id = ?", (plan_id,))
+        _insert_budget_plan_items(conn, plan_id, items)
+        return _load_budget_plan(conn, plan_id, user_id)
+
+
+def get_budget_plan(plan_id: int, *, user_id: int) -> dict | None:
+    with _connect() as conn:
+        return _load_budget_plan(conn, plan_id, user_id)
+
+
+def count_budget_plans(*, user_id: int) -> int:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM budget_plans WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    return int(row["c"] or 0)
+
+
+def count_watchlist_items(*, user_id: int) -> int:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM watchlist_items WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    return int(row["c"] or 0)
+
+
+def update_user_subscription(
+    user_id: int,
+    *,
+    subscription_tier: str | None = None,
+    billing_provider: str | None = None,
+    billing_customer_id: str | None = None,
+    billing_subscription_id: str | None = None,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    subscription_status: str | None = None,
+    current_period_end: str | None = None,
+    trial_ends_at: str | None = None,
+) -> None:
+    fields: list[str] = []
+    values: list[object] = []
+    for column, value in (
+        ("subscription_tier", subscription_tier),
+        ("billing_provider", billing_provider),
+        ("billing_customer_id", billing_customer_id),
+        ("billing_subscription_id", billing_subscription_id),
+        ("stripe_customer_id", stripe_customer_id),
+        ("stripe_subscription_id", stripe_subscription_id),
+        ("subscription_status", subscription_status),
+        ("current_period_end", current_period_end),
+        ("trial_ends_at", trial_ends_at),
+    ):
+        if value is not None:
+            fields.append(f"{column} = ?")
+            values.append(value)
+    if not fields:
+        return
+    values.append(user_id)
+    with _connect() as conn:
+        conn.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", values)
+
+
+def list_budget_plans(*, user_id: int) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM budget_plans
+            WHERE user_id = ?
+            ORDER BY start_month DESC, id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        plans = []
+        for row in rows:
+            items = conn.execute(
+                "SELECT * FROM budget_plan_items WHERE plan_id = ? ORDER BY position ASC, id ASC",
+                (row["id"],),
+            ).fetchall()
+            plans.append(_budget_plan_to_dict(row, items))
+    return plans
+
+
+def delete_budget_plan(plan_id: int, *, user_id: int) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM budget_plans WHERE id = ? AND user_id = ?",
+            (plan_id, user_id),
+        )
+    return cur.rowcount > 0

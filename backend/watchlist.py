@@ -9,7 +9,9 @@ from typing import Any
 import yfinance as yf
 
 from db import add_watchlist_item, delete_watchlist_item, list_watchlist_items
-from stock_service import resolve_tradable_symbol
+from stooq import period_changes as stooq_period_changes
+from stooq import resolve_stooq_quote
+from stock_service import PRICE_SOURCE_LABELS, _normalize_price_source, resolve_tradable_symbol
 
 ASSET_TYPES = {"stock", "etf", "mutual_fund"}
 
@@ -207,9 +209,18 @@ def create_watchlist_entry(
     user_id: int,
     symbol: str,
     asset_type: str | None = None,
+    price_source: str = "yahoo",
 ) -> dict:
     requested = symbol.upper().strip()
-    resolved, ticker, info, price, _previous = resolve_tradable_symbol(requested)
+    source = _normalize_price_source(price_source)
+    if source == "stooq":
+        return _create_from_stooq(
+            user_id=user_id,
+            requested=requested,
+            asset_type=asset_type,
+        )
+
+    resolved, ticker, info, price, previous = resolve_tradable_symbol(requested)
     if price is None:
         raise ValueError(f"Could not resolve a live price for {requested}")
 
@@ -230,6 +241,7 @@ def create_watchlist_entry(
         currency=currency,
         added_at=added_at,
         price_at_add=round(float(price), 4),
+        price_source=source,
     )
     return _enrich_from_quote(
         row,
@@ -237,7 +249,32 @@ def create_watchlist_entry(
         ticker=ticker,
         info=info,
         price=float(price),
+        previous_close=previous,
     )
+
+
+def _create_from_stooq(*, user_id: int, requested: str, asset_type: str | None) -> dict:
+    data = resolve_stooq_quote(requested)
+    resolved = data["symbol"]
+    price = float(data["price"])
+    resolved_type = asset_type if asset_type in ASSET_TYPES else "stock"
+    added_at = datetime.now(timezone.utc).date().isoformat()
+    row = add_watchlist_item(
+        user_id=user_id,
+        symbol=resolved,
+        requested_symbol=requested if requested != resolved else None,
+        company_name=data.get("name") or resolved,
+        asset_type=resolved_type,
+        currency=(data.get("currency") or "USD").upper(),
+        added_at=added_at,
+        price_at_add=round(price, 4),
+        price_source="stooq",
+    )
+    return _enrich_from_stooq(row, data=data)
+
+
+def _daily_change_pct(previous_close: float | None, live_price: float | None) -> float | None:
+    return _pct_change(previous_close, live_price)
 
 
 def _enrich_from_quote(
@@ -247,6 +284,7 @@ def _enrich_from_quote(
     ticker: yf.Ticker,
     info: dict,
     price: float | None,
+    previous_close: float | None = None,
 ) -> dict[str, Any]:
     if price is None:
         hist = ticker.history(period="5d", auto_adjust=True)
@@ -265,6 +303,7 @@ def _enrich_from_quote(
     changes = _period_changes(ticker, live_price)
     market = infer_market(symbol=resolved, info=info)
 
+    source = (row.get("price_source") or "yahoo").lower()
     return {
         **row,
         "symbol": resolved,
@@ -273,7 +312,40 @@ def _enrich_from_quote(
         "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
         "live_price": live_price,
         "price_at_add": price_at_add,
+        "change_pct": _daily_change_pct(previous_close, live_price),
         "change_since_added_pct": _pct_change(price_at_add, live_price),
+        "price_source": source,
+        "price_source_label": PRICE_SOURCE_LABELS.get(source, source),
+        **market,
+        **changes,
+        "error": None,
+    }
+
+
+def _enrich_from_stooq(row: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
+    symbol = row["symbol"]
+    payload = data or resolve_stooq_quote(symbol)
+    resolved = payload["symbol"]
+    live_price = round(float(payload["price"]), 4)
+    price_at_add = _safe_float(row.get("price_at_add"))
+    market = infer_market(symbol=resolved, info={})
+    changes = stooq_period_changes(payload.get("closes") or [], live_price)
+    return {
+        **row,
+        "symbol": resolved,
+        "company_name": payload.get("name") or row.get("company_name") or resolved,
+        "currency": (payload.get("currency") or row.get("currency") or "USD").upper(),
+        "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
+        "live_price": live_price,
+        "price_at_add": price_at_add,
+        "change_pct": (
+            round(float(payload["change_pct"]), 2)
+            if payload.get("change_pct") is not None
+            else _daily_change_pct(payload.get("previous_close"), live_price)
+        ),
+        "change_since_added_pct": _pct_change(price_at_add, live_price),
+        "price_source": "stooq",
+        "price_source_label": PRICE_SOURCE_LABELS["stooq"],
         **market,
         **changes,
         "error": None,
@@ -282,14 +354,18 @@ def _enrich_from_quote(
 
 def _enrich_row(row: dict[str, Any]) -> dict[str, Any]:
     symbol = row["symbol"]
+    source = (row.get("price_source") or "yahoo").lower()
     try:
-        resolved, ticker, info, price, _previous = resolve_tradable_symbol(symbol)
+        if source == "stooq":
+            return _enrich_from_stooq(row)
+        resolved, ticker, info, price, previous = resolve_tradable_symbol(symbol)
         return _enrich_from_quote(
             row,
             resolved=resolved,
             ticker=ticker,
             info=info,
             price=price,
+            previous_close=previous,
         )
     except Exception as exc:
         price_at_add = _safe_float(row.get("price_at_add"))
@@ -299,10 +375,13 @@ def _enrich_row(row: dict[str, Any]) -> dict[str, Any]:
             "asset_type_label": asset_type_label(row.get("asset_type") or "stock"),
             "live_price": None,
             "price_at_add": price_at_add,
+            "change_pct": None,
             "change_since_added_pct": None,
             "change_1m_pct": None,
             "change_6m_pct": None,
             "change_1y_pct": None,
+            "price_source": source,
+            "price_source_label": PRICE_SOURCE_LABELS.get(source, source),
             **market,
             "error": str(exc),
         }
@@ -327,8 +406,8 @@ def build_watchlist(*, user_id: int) -> dict[str, Any]:
         "items": items,
         "disclaimer": (
             "Tracked symbols are stored locally. Live prices and percentage changes "
-            "use Yahoo Finance adjusted closes. Past performance is not a guarantee "
-            "of future results."
+            "use the source chosen for each symbol (Yahoo Finance or Stooq). "
+            "Past performance is not a guarantee of future results."
         ),
     }
 

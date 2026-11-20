@@ -11,6 +11,12 @@ from fx import convert_amount
 from stock_service import fetch_quote, resolve_tradable_symbol
 
 
+def _money_change(current_value: float | None, change_pct: float | None) -> float | None:
+    if current_value is None or change_pct is None:
+        return None
+    return round(current_value * change_pct / (100.0 + change_pct), 2) if change_pct != -100 else None
+
+
 def build_progress_summary(
     purchases: list[dict], sales: list[dict] | None = None
 ) -> dict:
@@ -110,6 +116,10 @@ def build_progress_summary(
         group["total_unrealized_gain_pct"] = None
         group["total_dividends_earned"] = None
         group["total_dividends_earned_pct"] = None
+        group["total_daily_change"] = None
+        group["total_daily_change_pct"] = None
+        group["total_monthly_change"] = None
+        group["total_monthly_change_pct"] = None
         group["holdings"] = []
         group["summary_only"] = True
 
@@ -187,7 +197,11 @@ def build_progress(purchases: list[dict], sales: list[dict] | None = None) -> di
 
         quote_error = None
         current_price = None
+        previous_close = None
         change_pct = None
+        change_1m_pct = None
+        daily_change = None
+        monthly_change = None
         market_value = None
         unrealized = None
         unrealized_pct = None
@@ -215,12 +229,19 @@ def build_progress(purchases: list[dict], sales: list[dict] | None = None) -> di
             quote = fetch_quote(symbol)
             quote_ccy = (quote.currency or currency).upper()
             current_price = quote.price
+            previous_close = quote.previous_close
             if quote_ccy != currency:
                 current_price = round(
                     convert_amount(quote.price, quote_ccy, currency),
                     4,
                 )
+                if previous_close is not None:
+                    previous_close = round(
+                        convert_amount(previous_close, quote_ccy, currency),
+                        4,
+                    )
             change_pct = quote.change_pct
+            change_1m_pct = quote.change_1m_pct
             company_name = quote.name or company_name
             if shares > 0:
                 market_value = round(shares * current_price, 2)
@@ -228,6 +249,11 @@ def build_progress(purchases: list[dict], sales: list[dict] | None = None) -> di
                 unrealized_pct = (
                     round((unrealized / invested) * 100, 2) if invested else 0.0
                 )
+                if previous_close is not None:
+                    daily_change = round(shares * (current_price - previous_close), 2)
+                else:
+                    daily_change = _money_change(market_value, change_pct)
+                monthly_change = _money_change(market_value, change_1m_pct)
             dividend = quote.dividend.to_dict()
             if rows:
                 try:
@@ -283,7 +309,11 @@ def build_progress(purchases: list[dict], sales: list[dict] | None = None) -> di
                 "total_invested": round(invested, 2),
                 "avg_cost_per_share": round(avg_cost, 4) if shares else None,
                 "current_price": current_price,
+                "previous_close": previous_close,
                 "change_pct": change_pct,
+                "change_1m_pct": change_1m_pct,
+                "daily_change": daily_change,
+                "monthly_change": monthly_change,
                 "market_value": market_value,
                 "unrealized_gain": unrealized,
                 "unrealized_gain_pct": unrealized_pct,
@@ -338,6 +368,10 @@ def _group_by_currency(
                 "sales": [],
                 "total_invested": 0.0,
                 "total_market_value": 0.0,
+                "total_daily_change": 0.0,
+                "total_monthly_change": 0.0,
+                "daily_change_holdings": 0,
+                "monthly_change_holdings": 0,
                 "total_dividends_earned": 0.0,
                 "total_realized_gain": 0.0,
                 "valued_holdings": 0,
@@ -359,6 +393,12 @@ def _group_by_currency(
             if holding["market_value"] is not None:
                 bucket["total_market_value"] += holding["market_value"]
                 bucket["valued_holdings"] += 1
+            if holding.get("daily_change") is not None:
+                bucket["total_daily_change"] += holding["daily_change"]
+                bucket["daily_change_holdings"] += 1
+            if holding.get("monthly_change") is not None:
+                bucket["total_monthly_change"] += holding["monthly_change"]
+                bucket["monthly_change_holdings"] += 1
         bucket["total_realized_gain"] += holding.get("realized_gain") or 0.0
 
     symbol_currency = {h["symbol"]: h["currency"] for h in holdings}
@@ -399,6 +439,36 @@ def _group_by_currency(
             round((dividends_earned / invested) * 100, 2) if invested else 0.0
         )
         realized_gain = round(bucket["total_realized_gain"], 2)
+        daily_change = (
+            round(bucket["total_daily_change"], 2)
+            if bucket["daily_change_holdings"]
+            else None
+        )
+        monthly_change = (
+            round(bucket["total_monthly_change"], 2)
+            if bucket["monthly_change_holdings"]
+            else None
+        )
+        previous_market = (
+            round(market_value - daily_change, 2)
+            if market_value is not None and daily_change is not None
+            else None
+        )
+        daily_change_pct = (
+            round((daily_change / previous_market) * 100, 2)
+            if daily_change is not None and previous_market
+            else None
+        )
+        previous_month_market = (
+            round(market_value - monthly_change, 2)
+            if market_value is not None and monthly_change is not None
+            else None
+        )
+        monthly_change_pct = (
+            round((monthly_change / previous_month_market) * 100, 2)
+            if monthly_change is not None and previous_month_market
+            else None
+        )
         results.append(
             {
                 "currency": currency,
@@ -407,6 +477,10 @@ def _group_by_currency(
                 "symbol_count": bucket["symbol_count"],
                 "total_invested": invested,
                 "total_market_value": market_value,
+                "total_daily_change": daily_change,
+                "total_daily_change_pct": daily_change_pct,
+                "total_monthly_change": monthly_change,
+                "total_monthly_change_pct": monthly_change_pct,
                 "total_unrealized_gain": unrealized,
                 "total_unrealized_gain_pct": unrealized_pct,
                 "total_realized_gain": realized_gain,

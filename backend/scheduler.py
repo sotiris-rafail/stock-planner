@@ -39,6 +39,11 @@ def run_due_monthly_reports() -> None:
     from monthly_report import build_monthly_report
     from portfolio import build_progress
 
+    from settings import smtp_enabled
+
+    if not smtp_enabled():
+        return
+
     tz = scheduler_timezone()
     now = datetime.now(tz)
     if now.day != 1 or now.hour != 0:
@@ -87,11 +92,23 @@ def run_due_monthly_reports() -> None:
 
 
 def _loop() -> None:
+    from live_cache import run_silent_quote_refresh
+
     while not _stop.is_set():
         try:
             run_due_monthly_reports()
         except Exception:
             logger.exception("Monthly report scheduler tick failed")
+        try:
+            run_silent_quote_refresh()
+        except Exception:
+            logger.exception("Silent quote refresh tick failed")
+        try:
+            from backup import run_due_database_backup
+
+            run_due_database_backup()
+        except Exception:
+            logger.exception("Database backup tick failed")
         if _stop.wait(timeout=max(1.0, 60 - datetime.now().second)):
             break
 
@@ -107,6 +124,12 @@ def start_scheduler() -> None:
         daemon=True,
     )
     _thread.start()
+    try:
+        from backup import maybe_initial_database_backup
+
+        maybe_initial_database_backup()
+    except Exception:
+        logger.exception("Initial database backup failed")
     logger.info("Monthly report scheduler started (timezone=%s)", scheduler_timezone())
 
 

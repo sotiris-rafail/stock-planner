@@ -1,3 +1,4 @@
+const t = (key, vars) => (window.SbpI18n && window.SbpI18n.t(key, vars)) || key;
 const pageLoader = document.getElementById("page-loader");
 const pageLoaderText = document.getElementById("page-loader-text");
 const trackContent = document.getElementById("track-content");
@@ -7,6 +8,7 @@ const trackRefreshBtn = document.getElementById("track-refresh-btn");
 const trackForm = document.getElementById("track-form");
 const trackSymbol = document.getElementById("track-symbol");
 const trackType = document.getElementById("track-type");
+const trackPriceSource = document.getElementById("track-price-source");
 const trackSubmitBtn = document.getElementById("track-submit-btn");
 const trackFormError = document.getElementById("track-form-error");
 const trackFormOk = document.getElementById("track-form-ok");
@@ -18,7 +20,7 @@ let trackItems = [];
 let trackIsGuest = true;
 
 function showLoader(text) {
-  if (pageLoaderText) pageLoaderText.textContent = text || "Loading…";
+  if (pageLoaderText) pageLoaderText.textContent = text || t("common.loading");
   if (pageLoader) pageLoader.hidden = false;
 }
 
@@ -202,13 +204,18 @@ function updateTrackStatus(data) {
   if (!trackStatus) return;
   const asOf = data?.as_of ? new Date(data.as_of) : null;
   const count = data?.count ?? 0;
+  const countLabel =
+    count === 1 ? t("common.symbolOne", { n: count }) : t("common.symbolsN", { n: count });
   trackStatus.textContent = asOf
-    ? `Updated ${asOf.toLocaleTimeString(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })} · ${count} symbol${count === 1 ? "" : "s"}`
-    : "Ready";
+    ? t("track.updated", {
+        time: asOf.toLocaleTimeString(document.documentElement.lang === "el" ? "el-GR" : undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+        count: countLabel,
+      })
+    : t("track.ready");
 }
 
 function renderTrackCard(item) {
@@ -222,6 +229,7 @@ function renderTrackCard(item) {
         ${subtitle ? `<span class="track-card-symbol">${escapeHtml(subtitle)}</span>` : ""}
         <span class="track-card-meta">Added ${formatDate(item.added_at)}</span>
         <span class="track-card-price">${money(item.live_price, item.currency)}</span>
+        <span class="track-card-source">${escapeHtml(item.price_source_label || item.price_source || "Yahoo Finance")}</span>
       </span>
     </button>
   `;
@@ -257,41 +265,43 @@ function openTrackModal(itemId) {
         <p class="track-modal-symbol">${escapeHtml(item.symbol)}</p>
         ${requestedLine}
         <span class="type-pill">${escapeHtml(item.asset_type_label || "—")}</span>
+        <span class="type-pill">${escapeHtml(item.price_source_label || item.price_source || "Yahoo Finance")}</span>
         <p class="sub">${escapeHtml(marketLabel(item))}</p>
       </div>
     </header>
     ${errorLine}
     <div class="track-modal-grid">
-      ${renderModalStat("Date added", formatDate(item.added_at))}
-      ${renderModalStat("Live price", money(item.live_price, item.currency))}
-      ${renderModalStat("Price at add", money(item.price_at_add, item.currency))}
+      ${renderModalStat(t("track.dateAdded"), formatDate(item.added_at))}
+      ${renderModalStat(t("track.livePrice"), money(item.live_price, item.currency))}
+      ${renderModalStat(t("track.priceAtAdd"), money(item.price_at_add, item.currency))}
       ${renderModalStat(
-        "Since added",
+        t("track.sinceAdded"),
         pct(item.change_since_added_pct),
         { className: growthClass(item.change_since_added_pct) }
       )}
       ${renderModalStat(
-        "1 month",
+        t("track.1m"),
         pct(item.change_1m_pct),
         { className: growthClass(item.change_1m_pct) }
       )}
       ${renderModalStat(
-        "6 months",
+        t("track.6m"),
         pct(item.change_6m_pct),
         { className: growthClass(item.change_6m_pct) }
       )}
       ${renderModalStat(
-        "1 year",
+        t("track.1y"),
         pct(item.change_1y_pct),
         { className: growthClass(item.change_1y_pct) }
       )}
-      ${renderModalStat("Currency", escapeHtml(item.currency || "—"))}
+      ${renderModalStat(t("track.currency"), escapeHtml(item.currency || "—"))}
+      ${renderModalStat(t("track.priceSource"), escapeHtml(item.price_source_label || item.price_source || t("common.yahoo")))}
     </div>
     ${
       trackIsGuest
         ? ""
         : `<div class="track-modal-actions">
-            <button type="button" class="link-btn" data-remove="${item.id}">Remove from watchlist</button>
+            <button type="button" class="link-btn" data-remove="${item.id}">${t("track.remove")}</button>
           </div>`
     }
   `;
@@ -309,7 +319,7 @@ function closeTrackModal() {
 
 function renderTrackPayload(data) {
   if (trackDisclaimer) {
-    trackDisclaimer.textContent = data.disclaimer || "";
+    trackDisclaimer.textContent = t("track.disclaimer");
   }
   updateTrackStatus(data);
 
@@ -318,8 +328,8 @@ function renderTrackPayload(data) {
 
   if (!trackItems.length) {
     trackContent.innerHTML = trackIsGuest
-      ? '<p class="empty-copy">No symbols on your watchlist yet. Sign in to start tracking, or browse other pages freely.</p>'
-      : '<p class="empty-copy">No symbols yet. Add a stock, ETF, or mutual fund above.</p>';
+      ? `<p class="empty-copy">${t("track.emptyGuest")}</p>`
+      : `<p class="empty-copy">${t("track.empty")}</p>`;
     return;
   }
 
@@ -330,7 +340,11 @@ function renderTrackPayload(data) {
         <section class="track-market" data-track-market="${escapeHtml(group.key)}">
           <div class="track-market-heading">
             <h3>${escapeHtml(group.label)}</h3>
-            <p class="track-market-meta">${group.items.length} symbol${group.items.length === 1 ? "" : "s"}</p>
+            <p class="track-market-meta">${
+              group.items.length === 1
+                ? t("common.symbolOne", { n: group.items.length })
+                : t("common.symbolsN", { n: group.items.length })
+            }</p>
           </div>
           <div class="track-card-grid">
             ${group.items.map((item) => renderTrackCard(item)).join("")}
@@ -345,20 +359,14 @@ function upsertLocalWatchlistItem(item) {
   const next = trackItems.filter((row) => String(row.id) !== String(item.id));
   next.push(withMarket(item));
   trackItems = next;
-  const cached = window.SbpCache?.get?.(window.SbpCache.KEYS.watchlist) || {};
   const payload = {
-    ...cached,
     count: trackItems.length,
     items: sortLocalItems(trackItems),
     as_of: new Date().toISOString(),
     guest: false,
-    disclaimer: cached.disclaimer || trackDisclaimer?.textContent || "",
+    disclaimer: trackDisclaimer?.textContent || "",
   };
-  window.SbpCache?.set?.(window.SbpCache.KEYS.watchlist, payload, { notify: false });
   updateTrackStatus(payload);
-  if (trackDisclaimer && payload.disclaimer) {
-    trackDisclaimer.textContent = payload.disclaimer;
-  }
   insertTrackCard(item);
 }
 
@@ -435,28 +443,17 @@ function sortLocalItems(items) {
 
 function removeLocalWatchlistItem(id) {
   trackItems = trackItems.filter((row) => String(row.id) !== String(id));
-  const cached = window.SbpCache?.get?.(window.SbpCache.KEYS.watchlist) || {};
-  window.SbpCache?.set?.(window.SbpCache.KEYS.watchlist, {
-    ...cached,
-    count: trackItems.length,
-    items: trackItems,
-    as_of: new Date().toISOString(),
-    guest: false,
-  }, { notify: false });
   renderTrackPayload({
-    ...cached,
     count: trackItems.length,
     items: trackItems,
     guest: false,
-    disclaimer: cached.disclaimer || trackDisclaimer?.textContent || "",
+    disclaimer: trackDisclaimer?.textContent || "",
     as_of: new Date().toISOString(),
   });
 }
 
-async function reloadWatchlist({ reason = "page" } = {}) {
-  const data = await window.SbpCache.fetchAndCache(window.SbpCache.KEYS.watchlist, {
-    reason,
-  });
+async function reloadWatchlist({ force = false } = {}) {
+  const data = await window.SbpCache.fetchKey(window.SbpCache.KEYS.watchlist, { force });
   renderTrackPayload(data);
   return data;
 }
@@ -466,38 +463,25 @@ function bindTrackRefresh() {
   trackRefreshBound = true;
   window.SbpCache.bindRefreshButton(trackRefreshBtn, window.SbpCache.KEYS.watchlist, {
     onStart: () => {
-      if (trackStatus) trackStatus.textContent = "Refreshing…";
+      if (trackStatus) trackStatus.textContent = t("common.refreshing");
     },
     onDone: (data) => renderTrackPayload(data),
     onError: (err) => {
       if (!trackStatus) return;
       trackStatus.textContent =
-        err.code === "RATE_LIMITED" ? err.message : err.message || "Refresh failed";
+        err.code === "RATE_LIMITED" ? err.message : err.message || t("common.refreshFailed");
     },
   });
 }
 
 async function loadTrack() {
   bindTrackRefresh();
-
-  window.SbpCache.onUpdate(window.SbpCache.KEYS.watchlist, ({ data }) => {
-    if (!data) return;
-    renderTrackPayload(data);
-  });
-
-  const cached = window.SbpCache.get(window.SbpCache.KEYS.watchlist);
-  if (cached) {
-    hideLoader();
-    renderTrackPayload(cached);
-    return;
-  }
-
-  showLoader("Loading watchlist…");
-  if (trackStatus) trackStatus.textContent = "Fetching live data…";
+  showLoader(t("track.loading"));
+  if (trackStatus) trackStatus.textContent = t("common.fetching");
   try {
     await reloadWatchlist();
   } catch (err) {
-    trackContent.innerHTML = `<p class="error">${escapeHtml(err.message || "Failed to load")}</p>`;
+    trackContent.innerHTML = `<p class="error">${escapeHtml(err.message || t("common.failedLoad"))}</p>`;
     if (trackStatus) trackStatus.textContent = "Failed";
   } finally {
     hideLoader();
@@ -505,16 +489,16 @@ async function loadTrack() {
 }
 
 async function removeWatchlistItem(id) {
-  if (!id || !confirm("Remove this symbol from your watchlist?")) return;
+  if (!id || !confirm(t("track.removeConfirm"))) return;
 
   try {
     const res = await fetch(`/api/watchlist/${id}`, { method: "DELETE" });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Remove failed");
-    closeTrackModal();
+    if (!res.ok) throw new Error(data.detail || t("track.removeFailed"));
+    window.SbpSymbolSheet?.close?.();
     removeLocalWatchlistItem(id);
   } catch (err) {
-    showFormError(err.message || "Remove failed");
+    showFormError(err.message || t("track.removeFailed"));
   }
 }
 
@@ -539,14 +523,14 @@ trackForm?.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         symbol,
         asset_type: assetType || null,
+        price_source: trackPriceSource?.value || "yahoo",
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const detail = Array.isArray(data.detail)
-        ? data.detail.map((d) => d.msg || d).join(", ")
-        : data.detail;
-      throw new Error(detail || "Could not add symbol");
+      const proMsg = window.SbpBilling?.proRequiredMessage?.(data);
+      if (proMsg) throw new Error(proMsg);
+      throw new Error(window.SbpBilling?.errorMessage?.(data, t("track.addFailed")) || t("track.addFailed"));
     }
 
     trackSymbol.value = "";
@@ -554,34 +538,20 @@ trackForm?.addEventListener("submit", async (event) => {
     showFormOk(`Added ${data.symbol} at ${money(data.live_price ?? data.price_at_add, data.currency)}.`);
     upsertLocalWatchlistItem(data);
   } catch (err) {
-    showFormError(err.message || "Could not add symbol");
+    showFormError(err.message || t("track.addFailed"));
   } finally {
     trackSubmitBtn.disabled = false;
-    trackSubmitBtn.textContent = "Add symbol";
+    trackSubmitBtn.textContent = t("track.addSymbol");
   }
 });
 
 trackContent?.addEventListener("click", (event) => {
   const card = event.target.closest(".track-card[data-track-id]");
   if (!card) return;
-  openTrackModal(card.getAttribute("data-track-id"));
-});
-
-trackModal?.addEventListener("click", async (event) => {
-  if (event.target.closest("[data-track-modal-close]")) {
-    closeTrackModal();
-    return;
-  }
-
-  const removeBtn = event.target.closest("[data-remove]");
-  if (removeBtn) {
-    await removeWatchlistItem(removeBtn.getAttribute("data-remove"));
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && trackModal && !trackModal.hidden) {
-    closeTrackModal();
+  event.preventDefault();
+  const item = trackItems.find((row) => String(row.id) === String(card.getAttribute("data-track-id")));
+  if (item?.symbol) {
+    window.SbpSymbolSheet?.open?.(item.symbol, { watchlist: item });
   }
 });
 

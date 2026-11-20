@@ -2,57 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Progress · Stock Buy Planner</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
 </head>
-<body class="md-app">
+<body class="md-app bento-app page-progress">
   <div class="page-loader" id="page-loader" hidden>
     <div class="page-loader-card" role="status" aria-live="polite">
       <div class="spinner" aria-hidden="true"></div>
-      <p id="page-loader-text">Loading portfolio…</p>
+      <p id="page-loader-text" data-i18n="progress.loading">Loading portfolio…</p>
     </div>
   </div>
 
   <div class="page">
     <nav class="nav md-navigation-bar" aria-label="Main">
-      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
-      <a href="/progress" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
-      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
-      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
-      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
-      <a href="/notifications" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
     </nav>
 
     <header class="header">
-      <p class="eyebrow">Your buys &amp; sells</p>
-      <h1>Track what you already own</h1>
-      <p class="lede">
+      <p class="eyebrow" data-i18n="progress.eyebrow">Your buys &amp; sells</p>
+      <h1 data-i18n="progress.title">Track what you already own</h1>
+      <p class="lede" data-i18n="progress.lede">
         Log buys and sells. Sells use FIFO against your oldest lots, update remaining
         shares, and record realized gain or loss.
       </p>
     </header>
 
-    <main class="layout layout-progress">
-      <p class="auth-guest-note panel" data-auth-guest-note hidden>
-        <a href="/login">Sign in</a> to log buys and sells. You can browse this page without an account.
+    <main class="bento-grid">
+      <p class="auth-guest-note panel bento-tile bento-span-12" data-auth-guest-note hidden>
+        <span data-i18n-html="common.guestSignin"><a href="/login">Sign in</a> to log buys and sells. You can browse this page without an account.</span>
       </p>
-      <section class="panel form-panel" data-auth-save-panel>
-        <h2 class="panel-title" id="trade-panel-title">Log a purchase</h2>
+      <section class="panel form-panel bento-tile bento-span-4" data-auth-save-panel>
+        <h2 class="panel-title" id="trade-panel-title" data-i18n="progress.logBuy">Log a purchase</h2>
         <div class="trade-toggle" role="tablist" aria-label="Trade type">
-          <button type="button" class="trade-tab active" id="tab-buy" data-mode="buy">Buy</button>
-          <button type="button" class="trade-tab" id="tab-sell" data-mode="sell">Sell</button>
+          <button type="button" class="trade-tab active" id="tab-buy" data-mode="buy" data-i18n="progress.buy">Buy</button>
+          <button type="button" class="trade-tab" id="tab-sell" data-mode="sell" data-i18n="progress.sell">Sell</button>
         </div>
 
         <form id="trade-form">
-          <label>
-            Ticker
-            <input id="symbol" name="symbol" type="text" value="DTE.DE" maxlength="20" list="symbol-options" required />
+          <label class="md-field">
+            <input id="symbol" name="symbol" type="text" value="DTE.DE" maxlength="20" list="symbol-options" placeholder=" " required />
+            <span class="md-field-label" data-i18n="progress.ticker">Ticker</span>
             <datalist id="symbol-options"></datalist>
           </label>
 
@@ -60,168 +73,193 @@
           <p class="owned-hint" id="price-currency-hint" hidden></p>
 
           <div class="row">
-            <label>
-              <span id="shares-label">Shares bought</span>
-              <input id="shares" name="shares" type="number" value="5" min="0.000001" step="any" required />
+            <label class="md-field">
+              <input id="shares" name="shares" type="number" value="5" min="0.000001" step="any" placeholder=" " required />
+              <span class="md-field-label" id="shares-label" data-i18n="progress.sharesBought">Shares bought</span>
             </label>
-            <label>
-              Price / share
-              <span class="hint" id="price-hint">Blank = live price</span>
-              <input id="price_per_share" name="price_per_share" type="number" min="0.01" step="any" placeholder="Live" />
-            </label>
+            <div>
+              <label class="md-field">
+                <input id="price_per_share" name="price_per_share" type="number" min="0.01" step="any" placeholder=" " />
+                <span class="md-field-label" data-i18n="progress.priceShare">Price / share</span>
+              </label>
+              <p class="md-field-support" id="price-hint" data-i18n="progress.blankLive">Blank = live price</p>
+            </div>
           </div>
 
-          <label>
-            <span id="date-label">Purchase date</span>
-            <input id="trade_date" name="trade_date" type="date" required />
+          <label class="md-field">
+            <input id="trade_date" name="trade_date" type="date" placeholder=" " required />
+            <span class="md-field-label" id="date-label" data-i18n="progress.purchaseDate">Purchase date</span>
           </label>
 
-          <label>
-            Notes
-            <input id="notes" name="notes" type="text" maxlength="500" placeholder="Month 1 of DTE.DE plan" />
+          <label class="md-field">
+            <input id="notes" name="notes" type="text" maxlength="500" placeholder=" " />
+            <span class="md-field-label" data-i18n="progress.notes">Notes</span>
           </label>
 
           <div class="btn-row">
-            <button type="button" id="fill-price-btn" class="btn-secondary">Use live price</button>
-            <button type="submit" id="submit-btn">Save purchase</button>
+            <button type="button" id="fill-price-btn" class="btn-secondary" data-i18n="progress.useLive">Use live price</button>
+            <button type="submit" id="submit-btn" data-i18n="progress.saveBuy">Save purchase</button>
           </div>
           <p id="form-error" class="error" hidden></p>
           <p id="form-ok" class="ok" hidden></p>
         </form>
       </section>
 
-      <div class="stack">
-        <section class="panel results-panel">
-          <div class="ideas-toolbar">
-            <p class="disclaimer">Live prices refresh every <span data-sbp-refresh-minutes>15</span> minutes in the background.</p>
-            <div class="page-toolbar-actions">
-              <p class="page-status" id="progress-status">Loading…</p>
-              <button type="button" class="refresh-btn" id="progress-refresh-btn">
-                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-                <span class="refresh-btn-label">Refresh</span>
-              </button>
+      <section class="panel results-panel bento-tile bento-span-8">
+        <div class="ideas-toolbar">
+          <p class="disclaimer">Live prices refresh every <span data-sbp-refresh-minutes>15</span> minutes in the background.</p>
+          <div class="page-toolbar-actions">
+            <p class="page-status" id="progress-status" data-i18n="common.loading">Loading…</p>
+            <button type="button" class="refresh-btn" id="progress-refresh-btn">
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+              <span class="refresh-btn-label" data-i18n="common.refresh">Refresh</span>
+            </button>
+          </div>
+        </div>
+        <h2 class="panel-title" data-i18n="progress.byCurrency">Progress by currency</h2>
+        <div id="currency-sections">
+          <div class="inline-loading" id="currency-loading">
+            <div class="spinner spinner-sm" aria-hidden="true"></div>
+            <span data-i18n="progress.loadingLive">Loading live prices…</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel results-panel bento-tile bento-span-12">
+        <details class="history-accordion" id="lots-accordion">
+          <summary>
+            <span class="accordion-title" data-i18n="progress.lots">Remaining buy lots</span>
+            <span class="accordion-hint" id="lots-hint" data-i18n="progress.lotsHint">Open to view remaining lots</span>
+          </summary>
+          <div class="history-accordion-body">
+            <div class="pagination-bar" id="lots-pagination" hidden>
+              <label class="md-field">
+                <input type="search" id="lots-search" placeholder=" " autocomplete="off" />
+                <span class="md-field-label" data-i18n="common.search">Search</span>
+              </label>
+              <div class="md-select" data-md-select>
+                <select id="lots-page-size" aria-label="Per page">
+                  <option value="10" selected>10</option>
+                  <option value="20">20</option>
+                  <option value="30">30</option>
+                  <option value="50">50</option>
+                  <option value="all" data-i18n="common.all">All</option>
+                </select>
+              </div>
+              <div class="pagination-controls">
+                <button type="button" class="btn-secondary page-btn" id="lots-prev" disabled data-i18n="common.prev">Prev</button>
+                <span class="page-status" id="lots-page-status">—</span>
+                <button type="button" class="btn-secondary page-btn" id="lots-next" disabled data-i18n="common.next">Next</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="lots-table">
+                <thead>
+                  <tr>
+                    <th class="sortable-th" data-sort-key="date" data-sort-label="Date" data-i18n="progress.date">Date</th>
+                    <th class="sortable-th" data-sort-key="type" data-sort-label="Type" data-i18n="progress.type">Type</th>
+                    <th class="sortable-th" data-sort-key="stock" data-sort-label="Stock" data-i18n="progress.stock">Stock</th>
+                    <th class="sortable-th" data-sort-key="currency" data-sort-label="Currency" data-i18n="progress.currency">Currency</th>
+                    <th class="sortable-th" data-sort-key="shares" data-sort-label="Shares" data-i18n="progress.shares">Shares</th>
+                    <th class="sortable-th" data-sort-key="price" data-sort-label="Price" data-i18n="progress.price">Price</th>
+                    <th class="sortable-th" data-sort-key="amount" data-sort-label="Amount" data-i18n="progress.amount">Amount</th>
+                    <th class="sortable-th" data-sort-key="result" data-sort-label="Result" data-i18n="progress.result">Result</th>
+                    <th class="sortable-th" data-sort-key="notes" data-sort-label="Notes" data-i18n="progress.notes">Notes</th>
+                    <th aria-hidden="true"></th>
+                  </tr>
+                </thead>
+                <tbody id="lots-body">
+                  <tr><td colspan="10" class="empty" data-i18n="progress.lotsEmpty">Open this section to view remaining buy lots.</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
-          <h2 class="panel-title">Progress by currency</h2>
-          <div id="currency-sections">
-            <div class="inline-loading" id="currency-loading">
-              <div class="spinner spinner-sm" aria-hidden="true"></div>
-              <span>Loading live prices…</span>
+        </details>
+      </section>
+
+      <section class="panel results-panel bento-tile bento-span-12">
+        <details class="history-accordion" id="history-accordion">
+          <summary>
+            <span class="accordion-title" data-i18n="progress.history">Transaction history</span>
+            <span class="accordion-hint" id="history-hint" data-i18n="progress.historyHint">Open to load buys &amp; sells</span>
+          </summary>
+          <div class="history-accordion-body">
+            <div class="pagination-bar" id="history-pagination" hidden>
+              <label class="md-field">
+                <input type="search" id="history-search" placeholder=" " autocomplete="off" />
+                <span class="md-field-label" data-i18n="common.search">Search</span>
+              </label>
+              <div class="md-select" data-md-select>
+                <select id="history-page-size" aria-label="Per page">
+                  <option value="10" selected>10</option>
+                  <option value="20">20</option>
+                  <option value="30">30</option>
+                  <option value="50">50</option>
+                  <option value="all" data-i18n="common.all">All</option>
+                </select>
+              </div>
+              <div class="pagination-controls">
+                <button type="button" class="btn-secondary page-btn" id="history-prev" disabled data-i18n="common.prev">Prev</button>
+                <span class="page-status" id="history-page-status">—</span>
+                <button type="button" class="btn-secondary page-btn" id="history-next" disabled data-i18n="common.next">Next</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="history-table">
+                <thead>
+                  <tr>
+                    <th class="sortable-th" data-sort-key="date" data-sort-label="Date" data-i18n="progress.date">Date</th>
+                    <th class="sortable-th" data-sort-key="type" data-sort-label="Type" data-i18n="progress.type">Type</th>
+                    <th class="sortable-th" data-sort-key="stock" data-sort-label="Stock" data-i18n="progress.stock">Stock</th>
+                    <th class="sortable-th" data-sort-key="currency" data-sort-label="Currency" data-i18n="progress.currency">Currency</th>
+                    <th class="sortable-th" data-sort-key="shares" data-sort-label="Shares" data-i18n="progress.shares">Shares</th>
+                    <th class="sortable-th" data-sort-key="price" data-sort-label="Price" data-i18n="progress.price">Price</th>
+                    <th class="sortable-th" data-sort-key="amount" data-sort-label="Amount" data-i18n="progress.amount">Amount</th>
+                    <th class="sortable-th" data-sort-key="result" data-sort-label="Result" data-i18n="progress.result">Result</th>
+                    <th class="sortable-th" data-sort-key="notes" data-sort-label="Notes" data-i18n="progress.notes">Notes</th>
+                    <th aria-hidden="true"></th>
+                  </tr>
+                </thead>
+                <tbody id="purchases-body">
+                  <tr><td colspan="10" class="empty" data-i18n="progress.historyEmpty">Open this section to load transaction history.</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        </section>
-
-        <section class="panel results-panel">
-          <details class="history-accordion" id="lots-accordion">
-            <summary>
-              <span class="accordion-title">Remaining buy lots</span>
-              <span class="accordion-hint" id="lots-hint">Open to view remaining lots</span>
-            </summary>
-            <div class="history-accordion-body">
-              <div class="pagination-bar" id="lots-pagination" hidden>
-                <label class="table-search-label">
-                  Search
-                  <input type="search" id="lots-search" placeholder="Symbol or company name" autocomplete="off" />
-                </label>
-                <label class="page-size-label">
-                  Per page
-                  <select id="lots-page-size">
-                    <option value="10" selected>10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                    <option value="all">All</option>
-                  </select>
-                </label>
-                <div class="pagination-controls">
-                  <button type="button" class="btn-secondary page-btn" id="lots-prev" disabled>Prev</button>
-                  <span class="page-status" id="lots-page-status">—</span>
-                  <button type="button" class="btn-secondary page-btn" id="lots-next" disabled>Next</button>
-                </div>
-              </div>
-              <div class="table-wrap">
-                <table id="lots-table">
-                  <thead>
-                    <tr>
-                      <th class="sortable-th" data-sort-key="date" data-sort-label="Date">Date</th>
-                      <th class="sortable-th" data-sort-key="type" data-sort-label="Type">Type</th>
-                      <th class="sortable-th" data-sort-key="stock" data-sort-label="Stock">Stock</th>
-                      <th class="sortable-th" data-sort-key="currency" data-sort-label="Currency">Currency</th>
-                      <th class="sortable-th" data-sort-key="shares" data-sort-label="Shares">Shares</th>
-                      <th class="sortable-th" data-sort-key="price" data-sort-label="Price">Price</th>
-                      <th class="sortable-th" data-sort-key="amount" data-sort-label="Amount">Amount</th>
-                      <th class="sortable-th" data-sort-key="result" data-sort-label="Result">Result</th>
-                      <th class="sortable-th" data-sort-key="notes" data-sort-label="Notes">Notes</th>
-                      <th aria-hidden="true"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="lots-body">
-                    <tr><td colspan="10" class="empty">Open this section to view remaining buy lots.</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </details>
-        </section>
-
-        <section class="panel results-panel">
-          <details class="history-accordion" id="history-accordion">
-            <summary>
-              <span class="accordion-title">Transaction history</span>
-              <span class="accordion-hint" id="history-hint">Open to load buys &amp; sells</span>
-            </summary>
-            <div class="history-accordion-body">
-              <div class="pagination-bar" id="history-pagination" hidden>
-                <label class="table-search-label">
-                  Search
-                  <input type="search" id="history-search" placeholder="Symbol or company name" autocomplete="off" />
-                </label>
-                <label class="page-size-label">
-                  Per page
-                  <select id="history-page-size">
-                    <option value="10" selected>10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                    <option value="all">All</option>
-                  </select>
-                </label>
-                <div class="pagination-controls">
-                  <button type="button" class="btn-secondary page-btn" id="history-prev" disabled>Prev</button>
-                  <span class="page-status" id="history-page-status">—</span>
-                  <button type="button" class="btn-secondary page-btn" id="history-next" disabled>Next</button>
-                </div>
-              </div>
-              <div class="table-wrap">
-                <table id="history-table">
-                  <thead>
-                    <tr>
-                      <th class="sortable-th" data-sort-key="date" data-sort-label="Date">Date</th>
-                      <th class="sortable-th" data-sort-key="type" data-sort-label="Type">Type</th>
-                      <th class="sortable-th" data-sort-key="stock" data-sort-label="Stock">Stock</th>
-                      <th class="sortable-th" data-sort-key="currency" data-sort-label="Currency">Currency</th>
-                      <th class="sortable-th" data-sort-key="shares" data-sort-label="Shares">Shares</th>
-                      <th class="sortable-th" data-sort-key="price" data-sort-label="Price">Price</th>
-                      <th class="sortable-th" data-sort-key="amount" data-sort-label="Amount">Amount</th>
-                      <th class="sortable-th" data-sort-key="result" data-sort-label="Result">Result</th>
-                      <th class="sortable-th" data-sort-key="notes" data-sort-label="Notes">Notes</th>
-                      <th aria-hidden="true"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="purchases-body">
-                    <tr><td colspan="10" class="empty">Open this section to load transaction history.</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </details>
-        </section>
-      </div>
+        </details>
+      </section>
     </main>
   </div>
 
-  <script src="/static/auth.js"></script>
-  <script src="/static/prefetch.js"></script>
-  <script src="/static/progress.js"></script>
+  <div class="progress-modal" id="holdings-modal" hidden>
+    <div class="progress-modal-backdrop" data-holdings-modal-close></div>
+    <div
+      class="progress-modal-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="holdings-modal-title"
+    >
+      <button type="button" class="progress-modal-close" data-holdings-modal-close data-i18n-aria="common.close" aria-label="Close">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
+      <header class="progress-modal-header">
+        <div>
+          <p class="eyebrow" id="holdings-modal-kicker" data-i18n="progress.openHoldings">Open holdings</p>
+          <h2 id="holdings-modal-title" data-i18n="progress.holdings">Holdings</h2>
+        </div>
+        <p class="progress-modal-meta" id="holdings-modal-meta"></p>
+      </header>
+      <div class="holdings-modal-grid app-scroll" id="holdings-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/prefetch.js?v=20261104a"></script>
+  <script src="/static/list-tools.js?v=20261104a"></script>
+  <script src="/static/symbol-sheet.js?v=20261104g"></script>
+  <script src="/static/md-select.js?v=20261104a"></script>
+  <script src="/static/progress.js?v=20261104d"></script>
 </body>
 </html>

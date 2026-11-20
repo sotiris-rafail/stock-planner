@@ -2,65 +2,106 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dividend ideas · Stock Buy Planner</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
 </head>
-<body class="md-app">
+<body class="md-app bento-app page-ideas">
   <div class="page-loader" id="page-loader" hidden>
     <div class="page-loader-card" role="status" aria-live="polite">
       <div class="spinner" aria-hidden="true"></div>
-      <p id="page-loader-text">Loading dividend ideas…</p>
+      <p id="page-loader-text" data-i18n="ideas.loading">Loading dividend ideas…</p>
     </div>
   </div>
 
   <div class="page">
     <nav class="nav md-navigation-bar" aria-label="Main">
-      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
-      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
-      <a href="/ideas" class="active"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
-      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
-      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
-      <a href="/notifications" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas" class="active"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
     </nav>
 
     <header class="header">
-      <p class="eyebrow">Quality income shortlist</p>
-      <h1>Dividend ideas</h1>
-      <p class="lede">
-        A curated set of relatively lower-risk US and EU dividend payers with live
-        price, 6‑month change, and cash dividends paid each of the last five years.
-        Names you already hold appear in <strong>Owned</strong> with a green mark;
-        the rest stay in the Preview tables. Live data is checked every
-        <strong><span data-sbp-refresh-minutes>15</span> minutes</strong> and the board every <strong>4 hours</strong> —
-        the tables update only when something actually changes.
+      <p class="eyebrow" data-i18n="ideas.eyebrow">Quality income shortlist</p>
+      <h1 data-i18n="ideas.title">Dividend ideas</h1>
+      <p class="lede" data-i18n="ideas.lede">
+        Curated quality-dividend names, not a live index rank. See Suggestions for that list.
       </p>
     </header>
 
-    <main class="layout layout-progress">
-      <section class="panel results-panel ideas-panel">
+    <main class="bento-grid">
+      <p id="sbp-guest-cta" class="auth-guest-note panel bento-tile bento-span-12" hidden>
+        <span data-i18n-html="guest.trackCta"><a href="/login">Sign in</a> to save this symbol to Track.</span>
+      </p>
+      <section class="panel results-panel ideas-panel bento-tile bento-span-12">
         <div class="ideas-toolbar">
-          <p class="disclaimer" id="ideas-disclaimer"></p>
+          <div class="list-intro">
+            <p class="method-line" data-i18n="ideas.method">A curated quality-dividend board. Live prices and cash dividends, split by what you already own versus US and EU previews.</p>
+            <details class="disclaimer-fold">
+              <summary data-i18n="list.disclaimerMore">How this list works</summary>
+              <p class="disclaimer" id="ideas-disclaimer"></p>
+            </details>
+          </div>
           <div class="page-toolbar-actions">
-            <p class="page-status" id="ideas-status">Loading…</p>
+            <p class="page-status" id="ideas-status" data-i18n="common.loading">Loading…</p>
             <button type="button" class="refresh-btn" id="ideas-refresh-btn">
               <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-              <span class="refresh-btn-label">Refresh</span>
+              <span class="refresh-btn-label" data-i18n="common.refresh">Refresh</span>
             </button>
           </div>
         </div>
+        <div class="list-controls">
+          <label class="list-search">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <input type="search" id="ideas-search" autocomplete="off" data-i18n-placeholder="list.search" placeholder="Search" />
+          </label>
+          <label class="list-sort">
+            <span data-i18n="list.sort">Sort</span>
+            <select id="ideas-sort">
+              <option value="name" data-i18n="list.sortName">Name</option>
+              <option value="yield" data-i18n="list.sortYield">Yield</option>
+              <option value="6m" data-i18n="list.sort6m">6m change</option>
+            </select>
+          </label>
+        </div>
+        <div class="trade-toggle tabs-three" role="tablist" aria-label="Ideas board">
+          <button type="button" class="trade-tab active" data-ideas-tab="owned" role="tab" aria-selected="true" data-i18n="ideas.owned">Owned</button>
+          <button type="button" class="trade-tab" data-ideas-tab="us" role="tab" aria-selected="false" data-i18n="ideas.previewUs">US preview</button>
+          <button type="button" class="trade-tab" data-ideas-tab="eu" role="tab" aria-selected="false" data-i18n="ideas.previewEu">EU preview</button>
+        </div>
+        <div id="ideas-compare" class="compare-strip" hidden></div>
         <div id="ideas-sections"></div>
       </section>
     </main>
   </div>
 
-  <script src="/static/auth.js"></script>
-  <script src="/static/prefetch.js"></script>
-  <script src="/static/ideas.js"></script>
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/prefetch.js?v=20261104a"></script>
+  <script src="/static/list-tools.js?v=20261104a"></script>
+  <script src="/static/symbol-sheet.js?v=20261104d"></script>
+  <script src="/static/ideas.js?v=20261104i"></script>
 </body>
 </html>

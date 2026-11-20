@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Account · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
+</head>
+<body class="md-app bento-app page-account has-site-footer">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
+    </nav>
+
+    <header class="header header-centered">
+      <p class="eyebrow" data-i18n="account.page">Account</p>
+      <h1 data-i18n="account.title">Your account</h1>
+      <p class="lede" data-i18n="account.lede">Password, data export, and notifications live here.</p>
+      <p class="account-email-line" id="account-page-email"></p>
+    </header>
+
+    <main class="bento-grid">
+      <section class="panel bento-tile bento-span-center account-panel" id="account-plan-panel">
+        <h2 data-i18n="account.planTitle">Your plan</h2>
+        <p class="muted" id="account-subscription-tier">—</p>
+        <div class="home-start-actions">
+          <a class="link-btn" href="/pricing" data-i18n="account.upgrade">Upgrade to Pro</a>
+          <button type="button" class="link-btn" id="account-billing-portal" hidden data-i18n="account.manageBilling">Manage billing</button>
+        </div>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel">
+        <h2 data-i18n="account.helpTitle">Help &amp; data</h2>
+        <p class="muted" data-i18n="account.helpBody">How numbers are calculated, pricing, and your export.</p>
+        <div class="home-start-actions">
+          <a class="link-btn" href="/help/calculations" data-i18n="account.helpCalc">How we calculate</a>
+          <a class="link-btn" href="/pricing" data-i18n="footer.pricing">Pricing</a>
+        </div>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel">
+        <h2 data-i18n="account.flags">App settings from config</h2>
+        <ul class="account-flags" id="account-flags"></ul>
+        <p class="muted" id="account-smtp-note" hidden data-i18n="account.smtpWait">Password reset and monthly email stay off until SMTP is enabled. Backup does not send mail.</p>
+        <button type="button" data-account-signout data-i18n="nav.signout">Sign out</button>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel">
+        <h2 data-i18n="nav.notifications">Notifications</h2>
+        <p class="muted" data-i18n="notifications.lede">Get a monthly snapshot of your Progress holdings by email.</p>
+        <a class="link-btn" href="/notifications" data-i18n="nav.notifications">Notifications</a>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel" data-export-only hidden>
+        <h2 data-i18n="account.export">Export data</h2>
+        <p class="muted" data-i18n="account.importHint">Use a CSV or JSON file from Export. Buys are applied first, then sells, then watchlist.</p>
+        <div class="home-start-actions">
+          <button type="button" data-account-export="csv" data-i18n="account.exportCsv">Export CSV</button>
+          <button type="button" data-account-export="json" data-i18n="account.exportJson">Export JSON</button>
+        </div>
+        <label class="account-import-label">
+          <span data-i18n="account.import">Import</span>
+          <input id="account-import-file" type="file" accept=".csv,.json,text/csv,application/json" />
+        </label>
+        <p class="ok" id="account-import-ok" hidden></p>
+        <p class="error" id="account-import-error" hidden></p>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel">
+        <h2 data-i18n="account.change">Change password</h2>
+        <button type="button" data-account-change data-i18n="account.change">Change password</button>
+      </section>
+
+      <section class="panel bento-tile bento-span-center account-panel" data-delete-only hidden>
+        <h2 data-i18n="account.delete">Delete account</h2>
+        <p class="muted" data-i18n="account.deleteHint">This permanently removes your holdings, lots, watchlist, and login. Enter your password to confirm.</p>
+        <button type="button" class="btn-danger" data-account-delete data-i18n="account.delete">Delete account</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/billing-ui.js?v=20261119b"></script>
+  <script src="/static/account.js?v=20261119b"></script>
+</body>
+</html>

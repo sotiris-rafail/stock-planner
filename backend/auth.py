@@ -24,6 +24,7 @@ from db import (
     get_user_by_encrypted_email,
     get_user_by_id,
     list_users,
+    delete_user,
     update_user_password,
 )
 from mailer import send_reset_email
@@ -120,3 +121,23 @@ def reset_password_with_hash(*, reset_hash: str, password: str) -> None:
     if user_id is None:
         raise ValueError("Invalid or expired reset link")
     update_user_password(user_id=user_id, password_hash=hash_password(password))
+
+
+def verify_user_password(*, user_id: int, password: str) -> None:
+    user = get_user_by_id(user_id)
+    if not user or not verify_password(password, user["password_hash"]):
+        raise ValueError("Current password is incorrect")
+
+
+def delete_account(*, user_id: int, password: str) -> None:
+    verify_user_password(user_id=user_id, password=password)
+    if not delete_user(user_id=user_id):
+        raise ValueError("User not found")
+
+
+def change_password(*, user_id: int, current_password: str, new_password: str) -> None:
+    user = get_user_by_id(user_id)
+    if not user or not verify_password(current_password, user["password_hash"]):
+        raise ValueError("Current password is incorrect")
+    validate_password(new_password)
+    update_user_password(user_id=user_id, password_hash=hash_password(new_password))

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261119a" />
+</head>
+<body class="md-app bento-app page-pricing has-site-footer">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/login"><span class="material-symbols-outlined" aria-hidden="true">login</span><span data-i18n="nav.login">Sign in</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/pricing" class="active"><span class="material-symbols-outlined" aria-hidden="true">sell</span><span data-i18n="nav.pricing">Pricing</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+    </nav>
+
+    <header class="header header-centered">
+      <p class="eyebrow" data-i18n="pricing.eyebrow">Monthly investing</p>
+      <h1 data-i18n="pricing.title">Stick to your monthly plan</h1>
+      <p class="lede" data-i18n="pricing.lede">Set your budget and stocks, log buys on Progress, and see what you spent, what you set aside, and what dividends paid.</p>
+    </header>
+
+    <main class="bento-grid">
+      <section class="panel bento-tile bento-span-12 pricing-hero">
+        <ul class="pricing-bullets">
+          <li><span class="material-symbols-outlined" aria-hidden="true">calendar_month</span><span data-i18n="pricing.bullet1">Budget plans from start month to end month</span></li>
+          <li><span class="material-symbols-outlined" aria-hidden="true">pie_chart</span><span data-i18n="pricing.bullet2">Per-stock monthly targets and on-track months</span></li>
+          <li><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="pricing.bullet3">Set-aside cash and dividends in the plan window</span></li>
+        </ul>
+        <p class="disclaimer" data-i18n="pricing.disclaimer">Not investment advice. Live quotes and FX can be delayed or missing.</p>
+      </section>
+
+      <section class="panel bento-tile bento-span-6 pricing-tier" id="pricing-free">
+        <h2 data-i18n="pricing.freeName">Free</h2>
+        <p class="pricing-price"><span data-i18n="pricing.freePrice">€0</span> <small data-i18n="pricing.forever">forever</small></p>
+        <ul class="pricing-features">
+          <li data-i18n="pricing.freeF1">Plan calculator (single stock)</li>
+          <li data-i18n="pricing.freeF2">Progress: log buys and sells</li>
+          <li data-i18n="pricing.freeF3">1 budget plan, up to 24 months</li>
+          <li data-i18n="pricing.freeF4">Ideas, Suggestions, Track (10 symbols)</li>
+          <li data-i18n="pricing.freeF5">JSON export</li>
+        </ul>
+        <a class="btn-secondary pricing-cta" href="/login" data-i18n="pricing.startFree">Create free account</a>
+      </section>
+
+      <section class="panel bento-tile bento-span-6 pricing-tier pricing-tier-pro" id="pricing-pro">
+        <p class="pricing-badge" data-i18n="pricing.proBadge">Pro</p>
+        <h2 data-i18n="pricing.proName">Pro</h2>
+        <p class="pricing-price"><span data-i18n="pricing.proPrice">€1.99</span> <small data-i18n="pricing.perMonth">/ month</small></p>
+        <p class="muted pricing-yearly" data-i18n="pricing.yearly">or €19.99 / year · 14-day trial (when billing is live)</p>
+        <ul class="pricing-features">
+          <li data-i18n="pricing.proF1">Unlimited budget plans</li>
+          <li data-i18n="pricing.proF2">Plans up to 10 years</li>
+          <li data-i18n="pricing.proF3">Monthly email report</li>
+          <li data-i18n="pricing.proF4">Track up to 50 symbols</li>
+          <li data-i18n="pricing.proF5">Projection and full budget analytics</li>
+        </ul>
+        <div id="pricing-checkout" class="pricing-checkout"></div>
+        <button type="button" class="pricing-cta" id="pricing-upgrade-btn" hidden data-i18n="pricing.upgrade">Upgrade to Pro</button>
+        <p class="muted pricing-billing-note" id="pricing-billing-note" hidden></p>
+      </section>
+
+      <section class="panel bento-tile bento-span-12">
+        <h2 data-i18n="pricing.trustTitle">How we calculate</h2>
+        <p class="muted" data-i18n="pricing.trustBody">FIFO lots, trade-date FX, and budget matching are documented so you can trust the numbers.</p>
+        <a class="link-btn" href="/help/calculations" data-i18n="pricing.readHelp">Read the calculations guide</a>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261119a"></script>
+  <script src="/static/auth.js?v=20261119a"></script>
+  <script src="/static/billing-ui.js?v=20261119b"></script>
+  <script src="/static/pricing.js?v=20261119b"></script>
+</body>
+</html>

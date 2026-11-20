@@ -20,23 +20,75 @@ PAGES = [
 def test_public_pages_and_root_redirect(client):
     root = client.get("/", follow_redirects=False)
     assert root.status_code == 302
-    assert "/login" in root.headers["location"]
+    assert "/pricing" in root.headers["location"]
     legacy = client.get("/index", follow_redirects=False)
     assert legacy.status_code == 302
     for path in PAGES:
         response = client.get(path)
         assert response.status_code == 200, path
+    login = client.get("/login").text
+    assert "register-mail-note" in login
+    assert "login.noRecovery" in login
+    assert "auth-password-rules" in login
+    assert "Sign in to your account" not in login
+    assert "forgot.smtpOff" in client.get("/forgot-password").text
+    assert "reset.smtpOff" in client.get("/reset-password").text
 
 
 @pytest.mark.e2e
 def test_protected_pages_redirect_then_allow(client):
-    for path in ("/progress", "/track", "/notifications"):
+    guest_root = client.get("/", follow_redirects=False)
+    assert guest_root.status_code == 302
+    assert "/pricing" in guest_root.headers["location"]
+    for path in ("/home", "/budget", "/progress", "/track", "/notifications", "/account"):
         response = client.get(path, follow_redirects=False)
         assert response.status_code == 302
         assert "/login" in response.headers["location"]
     client.post("/api/auth/register", json={"email": VALID_EMAIL, "password": VALID_PASSWORD})
-    for path in ("/progress", "/track", "/notifications"):
+    home = client.get("/", follow_redirects=False)
+    assert home.status_code == 302
+    assert "/home" in home.headers["location"]
+    for path in ("/home", "/budget", "/progress", "/track", "/notifications", "/account"):
         assert client.get(path).status_code == 200
+    assert "home-markets" in client.get("/home").text
+    assert "bento-grid" in client.get("/home").text
+    assert "bento-grid" in client.get("/plan").text
+    home = client.get("/home").text
+    assert "quote-status" in home
+    assert "symbol-sheet.js" in home
+    assert "symbol-sheet.js" in client.get("/track").text
+    assert "notifications.smtpOff" in client.get("/notifications").text
+    assert "account.back" in client.get("/notifications").text
+    account = client.get("/account").text
+    assert "data-account-export" in account
+    assert "account-flags" in account
+    assert "data-account-signout" in account
+
+
+@pytest.mark.e2e
+def test_sheet_compare_and_mobile_contracts(client):
+    ideas = client.get("/ideas").text
+    assert "symbol-sheet.js" in ideas
+    assert "sbp-guest-cta" in ideas
+    ideas_js = client.get("/static/ideas.js").text
+    assert "ideas-cards" in ideas_js
+    assert "data-open-sheet" in ideas_js
+    assert "preferTabWithRows" in ideas_js
+    suggestions = client.get("/suggestions").text
+    assert "symbol-sheet.js" in suggestions
+    assert "sbp-guest-cta" in suggestions
+    assert "compare-strip" in suggestions
+    sugg_js = client.get("/static/suggestions.js").text
+    assert "compare.sameArea" in sugg_js
+    assert "data-open-sheet" in sugg_js
+    plan = client.get("/plan").text
+    assert "schedule-cards" in plan
+    assert "plan-schedule-cards" in plan
+    sheet = client.get("/static/symbol-sheet.js").text
+    assert "progress.thisMonth" in sheet
+    assert "guest.trackCtaPlain" in sheet
+    assert "sheet.yieldOnCost" in sheet
+    assert "data-open-history" in sheet
 
 
 @pytest.mark.e2e

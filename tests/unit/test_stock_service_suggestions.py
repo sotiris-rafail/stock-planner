@@ -54,8 +54,29 @@ def test_fetch_quote_mocked(monkeypatch):
     assert isinstance(q, StockQuote)
     assert q.symbol == "DTE.DE"
     assert q.price == 20
+    assert q.price_source == "yahoo"
     divs = fetch_dividends("DTE.DE")
     assert divs["symbol"] == "DTE.DE"
+
+
+def test_fetch_quote_stooq(monkeypatch):
+    monkeypatch.setattr(
+        "stock_service.resolve_stooq_quote",
+        lambda symbol, lookback_months=12: {
+            "symbol": "DTE.DE",
+            "name": "DTE.DE",
+            "currency": "EUR",
+            "price": 21.5,
+            "previous_close": 21.0,
+            "change_pct": 2.38,
+            "avg_monthly_growth_pct": 1.1,
+            "price_source": "stooq",
+        },
+    )
+    q = fetch_quote("dte.de", include_dividends=False, source="stooq")
+    assert q.price_source == "stooq"
+    assert q.price == 21.5
+    assert q.currency == "EUR"
 
 
 def test_suggestion_sources_scores(monkeypatch):

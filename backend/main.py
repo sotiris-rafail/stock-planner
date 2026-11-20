@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -14,7 +14,9 @@ from auth import (
     SESSION_COOKIE,
     SESSION_DAYS,
     authenticate_user,
+    change_password,
     create_session_token,
+    delete_account,
     register_user,
     request_password_reset,
     reset_password_with_hash,
@@ -22,36 +24,91 @@ from auth import (
 from auth_crypto import decrypt_email, validate_email
 from deps import get_optional_user_id, require_user_id
 
+from account_io import export_csv, export_payload, import_payload
+from billing import (
+    billing_configured,
+    create_billing_portal,
+    create_checkout_session,
+    handle_stripe_webhook,
+    handle_webhook,
+    list_providers_public,
+    user_can_open_billing_portal,
+)
+from settings import billing_public_config, site_guest_home
+from entitlements import (
+    ProRequired,
+    assert_budget_plan_create,
+    assert_budget_plan_window,
+    assert_monthly_email,
+    assert_watchlist_add,
+    user_is_pro,
+)
+from budget_plan import (
+    MAX_PLAN_ITEMS,
+    PLAN_CURRENCIES,
+    parse_month,
+    summarize_budget_plan,
+    validate_window,
+)
 from calculator import calculate_buy_plan, result_to_dict
 from db import (
     add_purchase,
-    clear_dividend_ideas_cache,
+    create_budget_plan,
+    delete_budget_plan,
     delete_purchase,
     execute_sale,
     get_notification_settings,
     get_user_by_id,
     init_db,
+    list_budget_plans,
     list_positions,
     list_purchases,
     list_purchases_page,
+    list_sale_lot_allocations,
     list_sales,
     list_transactions_page,
     owned_shares,
     today_iso,
+    update_budget_plan,
     upsert_notification_settings,
 )
-from portfolio import build_progress, build_progress_summary
+from portfolio import build_progress_summary
 from pricing_rules import (
     normalize_user_price,
     preferred_price_currency,
     quote_in_preferred_currency,
 )
-from dividend_ideas import build_dividend_ideas
-from suggestions import build_suggestions
-from stock_service import fetch_dividends, fetch_quote
-from watchlist import ASSET_TYPES, build_watchlist, create_watchlist_entry, remove_watchlist_entry
+from backup import backup_status
+from live_cache import (
+    RateLimited,
+    get_budget_progress,
+    get_dividend_ideas,
+    get_progress,
+    get_suggestions,
+    get_watchlist,
+    invalidate_budget_plans,
+    invalidate_progress,
+    merge_watchlist_item,
+    quote_status,
+    remove_watchlist_item_from_cache,
+    start_cache_warmup,
+)
+from stock_service import PRICE_SOURCE_LABELS, fetch_dividends, fetch_quote
+from watchlist import ASSET_TYPES, create_watchlist_entry, remove_watchlist_entry
 from app_logging import setup_logging
-from settings import prepare_config_files, silent_stock_refresh_minutes
+from mailer import EmailDisabled
+from settings import (
+    DELETE_DISABLED_MESSAGE,
+    EMAIL_DISABLED_MESSAGE,
+    EXPORT_DISABLED_MESSAGE,
+    backup_enabled,
+    delete_enabled,
+    export_enabled,
+    prepare_config_files,
+    silent_stock_refresh_minutes,
+    smtp_enabled,
+    suggestion_refresh_hours,
+)
 from properties import load_property_map
 from scheduler import start_scheduler, stop_scheduler
 
@@ -71,6 +128,7 @@ def on_startup() -> None:
     load_property_map()
     init_db()
     start_scheduler()
+    start_cache_warmup()
 
 
 @app.on_event("shutdown")
@@ -90,6 +148,19 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     hash: str = Field(min_length=16, max_length=128)
     password: str = Field(min_length=10, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
+class ImportAccountRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2_000_000)
 
 
 class NotificationSettingsRequest(BaseModel):
@@ -132,6 +203,10 @@ class PlanRequest(BaseModel):
         description="Optional growth % override per period. If omitted, uses historical estimate.",
     )
     lookback_months: int = Field(default=12, ge=3, le=60)
+    price_source: str = Field(
+        default="yahoo",
+        description="Quote provider: 'yahoo' or 'stooq'.",
+    )
 
     @field_validator("frequency")
     @classmethod
@@ -140,6 +215,14 @@ class PlanRequest(BaseModel):
         if freq not in {"monthly", "yearly"}:
             raise ValueError("frequency must be 'monthly' or 'yearly'")
         return freq
+
+    @field_validator("price_source")
+    @classmethod
+    def normalize_price_source(cls, value: str) -> str:
+        source = (value or "yahoo").lower().strip()
+        if source not in {"yahoo", "stooq"}:
+            raise ValueError("price_source must be 'yahoo' or 'stooq'")
+        return source
 
     def resolved_periods(self) -> int:
         if self.periods is not None:
@@ -195,6 +278,10 @@ class WatchlistRequest(BaseModel):
         default=None,
         description="stock, etf, or mutual_fund. Inferred from market data when omitted.",
     )
+    price_source: str = Field(
+        default="yahoo",
+        description="Quote provider: 'yahoo' or 'stooq'.",
+    )
 
     @field_validator("symbol")
     @classmethod
@@ -212,6 +299,56 @@ class WatchlistRequest(BaseModel):
         if normalized not in ASSET_TYPES:
             raise ValueError("asset_type must be stock, etf, or mutual_fund")
         return normalized
+
+    @field_validator("price_source")
+    @classmethod
+    def normalize_watchlist_price_source(cls, value: str) -> str:
+        source = (value or "yahoo").lower().strip()
+        if source not in {"yahoo", "stooq"}:
+            raise ValueError("price_source must be 'yahoo' or 'stooq'")
+        return source
+
+
+class BudgetPlanItemRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    monthly_amount: float = Field(gt=0, le=10_000_000)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_item_symbol(cls, value: str) -> str:
+        return value.upper().strip()
+
+
+class BudgetPlanRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    start_month: str = Field(min_length=7, max_length=10, description="YYYY-MM")
+    end_month: str = Field(min_length=7, max_length=10, description="YYYY-MM")
+    monthly_amount: float | None = Field(
+        default=None,
+        ge=0,
+        le=10_000_000,
+        description="Money available each month. Blank = sum of the stock amounts.",
+    )
+    currency: str = Field(default="EUR", description="Plan currency for every amount.")
+    include_unplanned: bool = Field(
+        default=True,
+        description="Count buys of stocks that are not in the plan toward the budget.",
+    )
+    items: list[BudgetPlanItemRequest] = Field(default_factory=list, max_length=MAX_PLAN_ITEMS)
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_plan_currency(cls, value: str) -> str:
+        code = (value or "EUR").upper().strip()
+        if code not in PLAN_CURRENCIES:
+            raise ValueError(f"currency must be one of {', '.join(PLAN_CURRENCIES)}")
+        return code
+
+    @field_validator("name")
+    @classmethod
+    def normalize_plan_name(cls, value: str | None) -> str | None:
+        text = (value or "").strip()
+        return text or None
 
 
 class SellRequest(BaseModel):
@@ -247,13 +384,30 @@ class SellRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    status = quote_status()
+    return {
+        "status": "ok",
+        "smtp_enabled": smtp_enabled(),
+        **status,
+        **backup_status(),
+    }
 
 
 @app.get("/api/config")
 def app_config():
     minutes = silent_stock_refresh_minutes()
-    return {"cron_job_silent_stock_refresh": minutes}
+    hours = suggestion_refresh_hours()
+    return {
+        "cron_job_silent_stock_refresh": minutes,
+        "suggestion_refresh_hours": hours,
+        "smtp_enabled": smtp_enabled(),
+        "export_enabled": export_enabled(),
+        "delete_enabled": delete_enabled(),
+        **backup_status(),
+        "email_disabled_message": EMAIL_DISABLED_MESSAGE,
+        **billing_public_config(),
+        "billing_configured": billing_configured(),
+    }
 
 
 @app.post("/api/auth/register")
@@ -285,7 +439,105 @@ def logout(response: Response):
 @app.get("/api/auth/me")
 def auth_me(request: Request):
     user_id = get_optional_user_id(request)
-    return {"authenticated": user_id is not None}
+    if user_id is None:
+        return {"authenticated": False, "email": None}
+    user = get_user_by_id(user_id)
+    email = None
+    if user:
+        try:
+            email = decrypt_email(user["email_encrypted"])
+        except Exception:
+            email = None
+    return {
+        "authenticated": True,
+        "email": email,
+        "subscription_tier": "pro" if user_is_pro(user_id) else "free",
+        "billing_configured": billing_configured(),
+        "billing_portal_available": user_can_open_billing_portal(user),
+    }
+
+
+@app.post("/api/auth/change-password")
+def change_password_endpoint(
+    body: ChangePasswordRequest, user_id: int = Depends(require_user_id)
+):
+    try:
+        change_password(
+            user_id=user_id,
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+    except ValueError as exc:
+        status = 401 if "incorrect" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.get("/api/account/export")
+def export_account(
+    user_id: int = Depends(require_user_id),
+    format: str = Query(default="csv"),
+):
+    if not export_enabled():
+        raise HTTPException(status_code=403, detail=EXPORT_DISABLED_MESSAGE)
+    kind = (format or "csv").strip().lower()
+    if kind == "json":
+        return JSONResponse(
+            content=export_payload(user_id),
+            headers={
+                "Content-Disposition": 'attachment; filename="stock-buy-planner-export.json"'
+            },
+        )
+    if kind != "csv":
+        raise HTTPException(status_code=400, detail="format must be csv or json")
+    return Response(
+        content=export_csv(user_id),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="stock-buy-planner-export.csv"'
+        },
+    )
+
+
+@app.post("/api/account/import")
+def import_account(
+    body: ImportAccountRequest,
+    user_id: int = Depends(require_user_id),
+):
+    if not export_enabled():
+        raise HTTPException(status_code=403, detail=EXPORT_DISABLED_MESSAGE)
+    try:
+        result = import_payload(user_id=user_id, raw=body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from live_cache import invalidate_progress
+    from live_cache import invalidate as invalidate_cache
+
+    invalidate_progress(user_id)
+    invalidate_cache("watchlist", user_id)
+    return result
+
+
+@app.post("/api/auth/delete-account")
+def delete_account_endpoint(
+    body: DeleteAccountRequest,
+    response: Response,
+    user_id: int = Depends(require_user_id),
+):
+    if not delete_enabled():
+        raise HTTPException(status_code=403, detail=DELETE_DISABLED_MESSAGE)
+    try:
+        delete_account(user_id=user_id, password=body.password)
+    except ValueError as exc:
+        status = 401 if "incorrect" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    from live_cache import invalidate_progress
+    from live_cache import invalidate as invalidate_cache
+
+    invalidate_progress(user_id)
+    invalidate_cache("watchlist", user_id)
+    response.delete_cookie(SESSION_COOKIE)
+    return {"ok": True}
 
 
 @app.post("/api/auth/refresh")
@@ -297,9 +549,13 @@ def auth_refresh(response: Response, user_id: int = Depends(require_user_id)):
 
 @app.post("/api/auth/forgot-password")
 def forgot_password(body: ForgotPasswordRequest, request: Request):
+    if not smtp_enabled():
+        raise HTTPException(status_code=503, detail=EMAIL_DISABLED_MESSAGE)
     try:
         base = str(request.base_url).rstrip("/")
         request_password_reset(email=body.email, base_url=base)
+    except EmailDisabled as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -339,8 +595,11 @@ def quote(
         "price": q.price,
         "previous_close": q.previous_close,
         "change_pct": q.change_pct,
+        "change_1m_pct": q.change_1m_pct,
         "avg_monthly_growth_pct": q.avg_monthly_growth_pct,
         "lookback_months": q.lookback_months,
+        "price_source": q.price_source,
+        "price_source_label": PRICE_SOURCE_LABELS.get(q.price_source, q.price_source),
         "as_of": q.as_of,
         "price_input_currency": preferred_price_currency(symbol),
     }
@@ -367,6 +626,7 @@ def plan(body: PlanRequest):
             body.symbol,
             lookback_months=body.lookback_months,
             include_dividends=False,
+            source=body.price_source,
         )
         q = quote_in_preferred_currency(q, body.symbol)
         result = calculate_buy_plan(
@@ -390,6 +650,8 @@ def plan(body: PlanRequest):
     payload["historical_avg_monthly_growth_pct"] = q.avg_monthly_growth_pct
     payload["change_pct"] = q.change_pct
     payload["requested_symbol"] = q.requested_symbol
+    payload["price_source"] = q.price_source
+    payload["price_source_label"] = PRICE_SOURCE_LABELS.get(q.price_source, q.price_source)
     return payload
 
 
@@ -477,7 +739,7 @@ def create_purchase(body: PurchaseRequest, user_id: int = Depends(require_user_i
         purchase["requested_symbol"] = q.requested_symbol
     if normalized.conversion_note:
         purchase["conversion_note"] = normalized.conversion_note
-    clear_dividend_ideas_cache(user_id=user_id)
+    invalidate_progress(user_id)
     return purchase
 
 
@@ -539,7 +801,7 @@ def create_sale(body: SellRequest, user_id: int = Depends(require_user_id)):
         sale["requested_symbol"] = q.requested_symbol
     if normalized.conversion_note:
         sale["conversion_note"] = normalized.conversion_note
-    clear_dividend_ideas_cache(user_id=user_id)
+    invalidate_progress(user_id)
     return sale
 
 
@@ -582,7 +844,7 @@ def get_transactions(
 def remove_purchase(purchase_id: int, user_id: int = Depends(require_user_id)):
     if not delete_purchase(purchase_id, user_id=user_id):
         raise HTTPException(status_code=404, detail="Purchase not found")
-    clear_dividend_ideas_cache(user_id=user_id)
+    invalidate_progress(user_id)
     return {"ok": True}
 
 
@@ -598,15 +860,16 @@ def progress_summary(
 
 
 @app.get("/api/progress")
-def progress(symbol: str | None = None, user_id: int = Depends(require_user_id)):
-    purchases = list_purchases(user_id=user_id, symbol=symbol)
-    sales = list_sales(user_id=user_id, symbol=symbol)
-    payload = build_progress(purchases, sales)
-    # History is loaded lazily via /api/transactions
-    payload["purchases"] = []
-    payload["sales"] = []
-    payload["summary_only"] = False
-    return payload
+def progress(
+    force: bool = Query(default=False),
+    user_id: int = Depends(require_user_id),
+):
+    try:
+        return get_progress(user_id, force=force, manual=force)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from exc
 
 
 @app.get("/api/notifications/settings")
@@ -624,6 +887,8 @@ def get_notifications_settings(user_id: int = Depends(require_user_id)):
         "report_email": settings["report_email"],
         "account_email": account_email,
         "last_sent_month": settings.get("last_sent_month"),
+        "smtp_enabled": smtp_enabled(),
+        "email_disabled_message": EMAIL_DISABLED_MESSAGE,
     }
 
 
@@ -633,6 +898,16 @@ def update_notifications_settings(
     user_id: int = Depends(require_user_id),
 ):
     report_email = body.report_email.strip()
+    if body.monthly_report_enabled and not smtp_enabled():
+        raise HTTPException(status_code=503, detail=EMAIL_DISABLED_MESSAGE)
+    if body.monthly_report_enabled:
+        try:
+            assert_monthly_email(user_id)
+        except ProRequired as exc:
+            raise HTTPException(
+                status_code=402,
+                detail={"code": "pro_required", "feature": exc.feature, "message": exc.detail},
+            ) from exc
     if body.monthly_report_enabled:
         if not report_email:
             user = get_user_by_id(user_id)
@@ -670,41 +945,39 @@ def update_notifications_settings(
 
 
 @app.get("/api/dividend-ideas")
-def dividend_ideas(request: Request):
+def dividend_ideas(request: Request, force: bool = Query(default=False)):
     try:
         user_id = get_optional_user_id(request)
-        return build_dividend_ideas(user_id=user_id)
+        return get_dividend_ideas(user_id, force=force, manual=force)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/suggestions")
-def suggestions():
+def suggestions(force: bool = Query(default=False)):
     try:
-        return build_suggestions()
+        return get_suggestions(force=force, manual=force)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/watchlist")
-def get_watchlist(request: Request):
+def watchlist_get(request: Request, force: bool = Query(default=False)):
     try:
         user_id = get_optional_user_id(request)
-        if user_id is None:
-            from datetime import datetime, timezone
-
-            now = datetime.now(timezone.utc)
-            return {
-                "as_of": now.isoformat(),
-                "count": 0,
-                "items": [],
-                "guest": True,
-                "disclaimer": (
-                    "Sign in to save symbols to your personal watchlist. "
-                    "Browse freely — adding and removing symbols requires an account."
-                ),
-            }
-        return build_watchlist(user_id=user_id)
+        return get_watchlist(user_id, force=force, manual=force)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -712,11 +985,21 @@ def get_watchlist(request: Request):
 @app.post("/api/watchlist")
 def add_watchlist(body: WatchlistRequest, user_id: int = Depends(require_user_id)):
     try:
-        return create_watchlist_entry(
+        assert_watchlist_add(user_id)
+    except ProRequired as exc:
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "pro_required", "feature": exc.feature, "message": exc.detail},
+        ) from exc
+    try:
+        item = create_watchlist_entry(
             user_id=user_id,
             symbol=body.symbol,
             asset_type=body.asset_type,
+            price_source=body.price_source,
         )
+        merge_watchlist_item(user_id, item)
+        return item
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -727,12 +1010,216 @@ def add_watchlist(body: WatchlistRequest, user_id: int = Depends(require_user_id
 def remove_watchlist(item_id: int, user_id: int = Depends(require_user_id)):
     if not remove_watchlist_entry(item_id, user_id=user_id):
         raise HTTPException(status_code=404, detail="Watchlist item not found")
+    remove_watchlist_item_from_cache(user_id, item_id)
+    return {"ok": True}
+
+
+def _budget_plan_fields(body: BudgetPlanRequest) -> dict:
+    try:
+        start_month, end_month = validate_window(body.start_month, body.end_month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not body.items and not body.monthly_amount:
+        raise HTTPException(
+            status_code=400,
+            detail="Add a monthly amount, at least one stock, or both",
+        )
+
+    items: list[dict] = []
+    seen: set[str] = set()
+    for item in body.items:
+        try:
+            q = fetch_quote(item.symbol, include_dividends=False)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not find market data for {item.symbol}",
+            ) from exc
+        if q.symbol in seen:
+            raise HTTPException(status_code=400, detail=f"{item.symbol} is in the plan twice")
+        seen.add(q.symbol)
+        items.append(
+            {
+                "symbol": q.symbol,
+                "requested_symbol": item.symbol if item.symbol != q.symbol else None,
+                "company_name": q.name,
+                "monthly_amount": round(item.monthly_amount, 2),
+            }
+        )
+
+    start, end = parse_month(start_month), parse_month(end_month)
+    return {
+        "name": body.name or f"{start:%b %Y} – {end:%b %Y}",
+        "start_month": start_month,
+        "end_month": end_month,
+        "monthly_amount": round(body.monthly_amount, 2) if body.monthly_amount else None,
+        "currency": body.currency,
+        "include_unplanned": body.include_unplanned,
+        "items": items,
+    }
+
+
+def _budget_plan_summary(plan: dict, user_id: int) -> dict:
+    return summarize_budget_plan(
+        plan,
+        list_purchases(user_id=user_id),
+        list_sale_lot_allocations(user_id=user_id),
+    )
+
+
+@app.get("/api/budget-plans")
+def budget_plans_list(user_id: int = Depends(require_user_id)):
+    plans = list_budget_plans(user_id=user_id)
+    if not plans:
+        return {"plans": []}
+    purchases = list_purchases(user_id=user_id)
+    allocations = list_sale_lot_allocations(user_id=user_id)
+    return {
+        "plans": [summarize_budget_plan(plan, purchases, allocations) for plan in plans]
+    }
+
+
+def _pro_required_http(exc: ProRequired) -> HTTPException:
+    return HTTPException(
+        status_code=402,
+        detail={"code": "pro_required", "feature": exc.feature, "message": exc.detail},
+    )
+
+
+@app.post("/api/budget-plans")
+def budget_plan_create(body: BudgetPlanRequest, user_id: int = Depends(require_user_id)):
+    try:
+        assert_budget_plan_create(user_id)
+        assert_budget_plan_window(
+            user_id, start_month=body.start_month, end_month=body.end_month
+        )
+    except ProRequired as exc:
+        raise _pro_required_http(exc) from exc
+    plan = create_budget_plan(user_id=user_id, **_budget_plan_fields(body))
+    return _budget_plan_summary(plan, user_id)
+
+
+@app.put("/api/budget-plans/{plan_id}")
+def budget_plan_update(
+    plan_id: int, body: BudgetPlanRequest, user_id: int = Depends(require_user_id)
+):
+    try:
+        assert_budget_plan_window(
+            user_id, start_month=body.start_month, end_month=body.end_month
+        )
+    except ProRequired as exc:
+        raise _pro_required_http(exc) from exc
+    plan = update_budget_plan(plan_id, user_id=user_id, **_budget_plan_fields(body))
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Budget plan not found")
+    invalidate_budget_plans(user_id, plan_id)
+    return _budget_plan_summary(plan, user_id)
+
+
+@app.delete("/api/budget-plans/{plan_id}")
+def budget_plan_delete(plan_id: int, user_id: int = Depends(require_user_id)):
+    if not delete_budget_plan(plan_id, user_id=user_id):
+        raise HTTPException(status_code=404, detail="Budget plan not found")
+    invalidate_budget_plans(user_id, plan_id)
+    return {"ok": True}
+
+
+@app.get("/api/budget-plans/{plan_id}")
+def budget_plan_progress(
+    plan_id: int,
+    force: bool = Query(default=False),
+    user_id: int = Depends(require_user_id),
+):
+    try:
+        return get_budget_progress(user_id, plan_id, force=force, manual=force)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Budget plan not found") from exc
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Market data error: {exc}") from exc
+
+
+class BillingCheckoutRequest(BaseModel):
+    interval: str = Field(default="month", pattern="^(month|year)$")
+    provider: str | None = None
+
+
+@app.get("/api/billing/providers")
+def billing_providers_list():
+    return {"providers": list_providers_public(), **billing_public_config()}
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(
+    body: BillingCheckoutRequest, user_id: int = Depends(require_user_id)
+):
+    result = create_checkout_session(
+        user_id=user_id, interval=body.interval, provider=body.provider
+    )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": result.get("code", "billing_not_configured")},
+        )
+    return {"url": result["url"]}
+
+
+@app.post("/api/billing/portal")
+def billing_portal(user_id: int = Depends(require_user_id)):
+    result = create_billing_portal(user_id=user_id)
+    if not result.get("ok"):
+        code = result.get("code", "error")
+        if code == "no_billing_customer":
+            raise HTTPException(status_code=400, detail={"code": code})
+        if code in {"billing_not_configured", "portal_not_supported"}:
+            raise HTTPException(status_code=503, detail={"code": code})
+        raise HTTPException(status_code=400, detail={"code": code})
+    return {"url": result["url"], "provider": result.get("provider")}
+
+
+@app.post("/api/billing/webhook/{provider_id}")
+async def billing_webhook_provider(provider_id: str, request: Request):
+    payload = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    result = handle_webhook(provider_id, payload, headers)
+    if not result.get("ok"):
+        code = result.get("code", "error")
+        status = 400 if code in {"invalid_signature", "invalid_payload"} else 503
+        raise HTTPException(status_code=status, detail={"code": code})
+    return {"ok": True}
+
+
+@app.post("/api/billing/webhook")
+async def billing_webhook_stripe_legacy(request: Request):
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    result = handle_stripe_webhook(payload, signature)
+    if not result.get("ok"):
+        code = result.get("code", "error")
+        status = 400 if code == "invalid_signature" else 503
+        raise HTTPException(status_code=status, detail={"code": code})
     return {"ok": True}
 
 
 @app.get("/")
-def root():
-    return RedirectResponse(url="/login", status_code=302)
+def root(request: Request):
+    if get_optional_user_id(request) is None:
+        target = "/pricing" if site_guest_home() == "pricing" else "/login"
+        return RedirectResponse(url=target, status_code=302)
+    return RedirectResponse(url="/home", status_code=302)
+
+
+@app.get("/home")
+def home_page(request: Request):
+    if get_optional_user_id(request) is None:
+        return RedirectResponse(url="/login?next=%2Fhome", status_code=302)
+    path = FRONTEND_DIR / "home.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Home page not found")
+    return FileResponse(path)
 
 
 @app.get("/plan")
@@ -755,6 +1242,16 @@ def progress_page(request: Request):
     path = FRONTEND_DIR / "progress.html"
     if not path.exists():
         raise HTTPException(status_code=500, detail="Progress page not found")
+    return FileResponse(path)
+
+
+@app.get("/budget")
+def budget_page(request: Request):
+    if get_optional_user_id(request) is None:
+        return RedirectResponse(url="/login?next=%2Fbudget", status_code=302)
+    path = FRONTEND_DIR / "budget.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Budget page not found")
     return FileResponse(path)
 
 
@@ -784,6 +1281,16 @@ def track_page(request: Request):
     return FileResponse(path)
 
 
+@app.get("/account")
+def account_page(request: Request):
+    if get_optional_user_id(request) is None:
+        return RedirectResponse(url="/login?next=%2Faccount", status_code=302)
+    path = FRONTEND_DIR / "account.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Account page not found")
+    return FileResponse(path)
+
+
 @app.get("/notifications")
 def notifications_page(request: Request):
     if get_optional_user_id(request) is None:
@@ -791,6 +1298,48 @@ def notifications_page(request: Request):
     path = FRONTEND_DIR / "notifications.html"
     if not path.exists():
         raise HTTPException(status_code=500, detail="Notifications page not found")
+    return FileResponse(path)
+
+
+@app.get("/pricing")
+def pricing_page():
+    path = FRONTEND_DIR / "pricing.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Pricing page not found")
+    return FileResponse(path)
+
+
+@app.get("/help/calculations")
+def help_calculations_page():
+    path = FRONTEND_DIR / "help-calculations.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Help page not found")
+    return FileResponse(path)
+
+
+@app.get("/welcome")
+def welcome_page(request: Request):
+    if get_optional_user_id(request) is None:
+        return RedirectResponse(url="/login?next=%2Fwelcome", status_code=302)
+    path = FRONTEND_DIR / "welcome.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Welcome page not found")
+    return FileResponse(path)
+
+
+@app.get("/legal/terms")
+def legal_terms_page():
+    path = FRONTEND_DIR / "legal-terms.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Terms page not found")
+    return FileResponse(path)
+
+
+@app.get("/legal/privacy")
+def legal_privacy_page():
+    path = FRONTEND_DIR / "legal-privacy.html"
+    if not path.exists():
+        raise HTTPException(status_code=500, detail="Privacy page not found")
     return FileResponse(path)
 
 

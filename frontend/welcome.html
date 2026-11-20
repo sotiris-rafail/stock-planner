@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Welcome · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261119a" />
+</head>
+<body class="md-app bento-app page-welcome has-site-footer">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/home"><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/budget"><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress"><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+    </nav>
+
+    <header class="header header-centered">
+      <p class="eyebrow" data-i18n="welcome.eyebrow">Welcome</p>
+      <h1 data-i18n="welcome.title">Three steps to your first month</h1>
+      <p class="lede" data-i18n="welcome.lede">Pick how you want to start. You can use all three over time.</p>
+    </header>
+
+    <main class="bento-grid">
+      <section class="panel bento-tile bento-span-12 welcome-steps">
+        <ol class="budget-steps">
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span>
+            <div>
+              <strong data-i18n="welcome.stepBudget">Create a monthly budget (recommended)</strong>
+              <p class="muted" data-i18n="welcome.stepBudgetBody">Set months, amount, and the stocks you buy each month.</p>
+              <a class="link-btn" href="/budget" data-i18n="welcome.openBudget">Open Budget</a>
+            </div>
+          </li>
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">calculate</span>
+            <div>
+              <strong data-i18n="welcome.stepPlan">Or plan one stock first</strong>
+              <p class="muted" data-i18n="welcome.stepPlanBody">Use the Plan calculator for a single ticker and DCA schedule.</p>
+              <a class="link-btn" href="/plan" data-i18n="welcome.openPlan">Open Plan</a>
+            </div>
+          </li>
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">add_shopping_cart</span>
+            <div>
+              <strong data-i18n="welcome.stepProgress">Log a buy</strong>
+              <p class="muted" data-i18n="welcome.stepProgressBody">Progress is where real purchases count toward your budget.</p>
+              <a class="link-btn" href="/progress" data-i18n="welcome.openProgress">Open Progress</a>
+            </div>
+          </li>
+        </ol>
+        <div class="welcome-actions">
+          <button type="button" id="welcome-done" data-i18n="welcome.done">Go to Home</button>
+          <a class="link-btn" href="/help/calculations" data-i18n="welcome.help">How we calculate</a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261119a"></script>
+  <script src="/static/auth.js?v=20261119a"></script>
+  <script src="/static/welcome.js?v=20261119a"></script>
+</body>
+</html>

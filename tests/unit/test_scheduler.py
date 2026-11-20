@@ -20,6 +20,7 @@ def test_run_due_skips_when_not_first(monkeypatch):
             return datetime(2026, 3, 15, 12, 0, tzinfo=tz or ZoneInfo("UTC"))
 
     monkeypatch.setattr("scheduler.datetime", FakeNow)
+    monkeypatch.setattr("settings.smtp_enabled", lambda: True)
     run_due_monthly_reports()  # should return immediately
 
 
@@ -39,6 +40,7 @@ def test_run_due_sends(monkeypatch, isolated_db):
         def now(tz=None):
             return datetime(2026, 4, 1, 0, 10, tzinfo=tz or ZoneInfo("UTC"))
 
+    monkeypatch.setattr("settings.smtp_enabled", lambda: True)
     monkeypatch.setattr("scheduler.datetime", DT)
     monkeypatch.setattr("portfolio.build_progress", lambda p, s: {"by_currency": []})
     monkeypatch.setattr(
@@ -52,8 +54,24 @@ def test_run_due_sends(monkeypatch, isolated_db):
     assert len(sent) == 1
 
 
+def test_run_due_skips_when_smtp_disabled(monkeypatch, isolated_db):
+    sent = []
+
+    class DT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 4, 1, 0, 10, tzinfo=tz or ZoneInfo("UTC"))
+
+    monkeypatch.setattr("settings.smtp_enabled", lambda: False)
+    monkeypatch.setattr("scheduler.datetime", DT)
+    monkeypatch.setattr("mailer.send_monthly_report_email", lambda **k: sent.append(k))
+    run_due_monthly_reports()
+    assert sent == []
+
+
 def test_start_stop_scheduler(monkeypatch):
     monkeypatch.setattr("scheduler._loop", lambda: None)
+    monkeypatch.setattr("backup.maybe_initial_database_backup", lambda: None)
     start_scheduler()
     start_scheduler()
     stop_scheduler()

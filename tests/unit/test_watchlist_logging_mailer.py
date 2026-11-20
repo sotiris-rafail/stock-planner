@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from app_logging import archive_completed_months, monthly_archive_name, setup_logging
 from mailer import send_monthly_report_email, send_reset_email
@@ -39,7 +40,28 @@ def test_watchlist_helpers_and_create(isolated_db, monkeypatch):
     listed = build_watchlist(user_id=user_id)
     assert listed["count"] == 1
     assert listed["items"][0]["market"] == "United States"
+    assert listed["items"][0]["price_source"] == "yahoo"
+    assert listed["items"][0]["change_pct"] == 1.01
+
+    monkeypatch.setattr(
+        "watchlist.resolve_stooq_quote",
+        lambda symbol, lookback_months=12: {
+            "symbol": "DTE.DE",
+            "name": "DTE.DE",
+            "currency": "EUR",
+            "price": 18.0,
+            "previous_close": 17.5,
+            "change_pct": 2.8,
+            "avg_monthly_growth_pct": 0.5,
+            "price_source": "stooq",
+            "closes": [],
+        },
+    )
+    stooq_row = create_watchlist_entry(user_id=user_id, symbol="DTE.DE", price_source="stooq")
+    assert stooq_row["price_source"] == "stooq"
+    assert stooq_row["price_source_label"] == "Stooq"
     assert remove_watchlist_entry(row["id"], user_id=user_id)
+    assert remove_watchlist_entry(stooq_row["id"], user_id=user_id)
 
 
 def test_infer_market_and_sort():
@@ -78,7 +100,16 @@ def test_logging_archive(tmp_path, monkeypatch):
     assert logger.name == "sbp"
 
 
+def test_mailer_disabled(monkeypatch):
+    from mailer import EmailDisabled
+
+    monkeypatch.setattr("mailer.smtp_enabled", lambda: False)
+    with pytest.raises(EmailDisabled, match="Email is disabled for now. Thank you"):
+        send_reset_email(to_email="x@y.z", reset_url="http://r", reset_hash="abc")
+
+
 def test_mailer_skips_without_host(tmp_path, monkeypatch):
+    monkeypatch.setattr("mailer.smtp_enabled", lambda: True)
     monkeypatch.setattr("mailer.DATA_DIR", tmp_path)
     monkeypatch.setattr("mailer.OUTBOX_DIR", tmp_path / "outbox")
     monkeypatch.setattr("mailer.smtp_config", lambda: {"host": "", "from": "a@b.c", "port": 587, "user": "", "password": ""})
@@ -88,6 +119,7 @@ def test_mailer_skips_without_host(tmp_path, monkeypatch):
 
 
 def test_mailer_smtp_starttls(tmp_path, monkeypatch):
+    monkeypatch.setattr("mailer.smtp_enabled", lambda: True)
     monkeypatch.setattr("mailer.DATA_DIR", tmp_path)
     monkeypatch.setattr("mailer.OUTBOX_DIR", tmp_path / "outbox")
     smtp = MagicMock()

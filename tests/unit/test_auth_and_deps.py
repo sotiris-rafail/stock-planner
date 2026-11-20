@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 from auth import (
     authenticate_user,
+    change_password,
     create_session_token,
     decode_session_token,
     register_user,
@@ -49,6 +50,24 @@ def test_password_reset_flow(isolated_db, monkeypatch):
     assert authenticate_user(email="reset@example.com", password="Xy1!Zq3#Ab") == user_id
     with pytest.raises(ValueError):
         reset_password_with_hash(reset_hash="deadbeef" * 4, password=VALID_PASSWORD)
+
+
+def test_change_password(isolated_db):
+    user_id = register_user(email="pw@example.com", password=VALID_PASSWORD)
+    with pytest.raises(ValueError, match="incorrect"):
+        change_password(
+            user_id=user_id,
+            current_password="Ab1!Cd3#ZZ",
+            new_password="Xy1!Zq3#Ab",
+        )
+    change_password(
+        user_id=user_id,
+        current_password=VALID_PASSWORD,
+        new_password="Xy1!Zq3#Ab",
+    )
+    assert authenticate_user(email="pw@example.com", password="Xy1!Zq3#Ab") == user_id
+    with pytest.raises(ValueError):
+        authenticate_user(email="pw@example.com", password=VALID_PASSWORD)
 
 
 def test_registration_day_naive_and_aware():

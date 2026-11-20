@@ -17,7 +17,12 @@ from dividends import (
 )
 from monthly_report import build_monthly_report
 from properties import resolve_value
-from settings import DEFAULT_CONFIG_FILES, prepare_config_files, silent_stock_refresh_minutes
+from settings import (
+    DEFAULT_CONFIG_FILES,
+    prepare_config_files,
+    silent_stock_refresh_minutes,
+    suggestion_refresh_hours,
+)
 from yf_limit import yfinance_slot
 
 
@@ -92,6 +97,7 @@ def test_portfolio_summary_and_progress(monkeypatch):
             price=12,
             previous_close=11,
             change_pct=9.0,
+            change_1m_pct=10.0,
             avg_monthly_growth_pct=1,
             lookback_months=12,
             as_of="now",
@@ -103,6 +109,11 @@ def test_portfolio_summary_and_progress(monkeypatch):
     full = build_progress(purchases, sales)
     assert full["holdings"][0]["current_price"] == 12
     assert full["holdings"][0]["realized_gain"] == 5.0
+    assert full["holdings"][0]["daily_change"] == 2.0
+    usd = next(g for g in full["by_currency"] if g["currency"] == "USD")
+    assert usd["total_invested"] == 20.0
+    assert usd["total_daily_change"] == 2.0
+    assert usd["total_monthly_change"] == pytest.approx(2.18, abs=0.05)
 
 
 def test_monthly_report_empty_and_filled():
@@ -155,6 +166,38 @@ def test_properties_resolve_and_settings(tmp_path, monkeypatch):
     assert silent_stock_refresh_minutes() == 15
     monkeypatch.setattr("settings._application_data", lambda: {"cron_job": "20"})
     assert silent_stock_refresh_minutes() == 20
+    resolved_dot = resolve_value({"hours": "${suggestion.refresh.time}"}, {"suggestion.refresh.time": "6"})
+    assert resolved_dot["hours"] == "6"
+    monkeypatch.setattr("settings._application_data", lambda: {"suggestion_refresh": "0"})
+    assert suggestion_refresh_hours() == 4
+    monkeypatch.setattr("settings._application_data", lambda: {"suggestion_refresh": "8"})
+    assert suggestion_refresh_hours() == 8
+    from settings import _as_bool, export_enabled, smtp_enabled
+
+    assert _as_bool("false") is False
+    assert _as_bool("true") is True
+    monkeypatch.setattr("settings.smtp_config", lambda: {"enabled": False})
+    assert smtp_enabled() is False
+    monkeypatch.setattr("settings._application_data", lambda: {"export": {"enabled": "true"}})
+    assert export_enabled() is True
+    monkeypatch.setattr("settings._application_data", lambda: {"export": {"enabled": "false"}})
+    assert export_enabled() is False
+    monkeypatch.setattr("settings._application_data", lambda: {})
+    assert export_enabled() is False
+    from settings import delete_enabled
+
+    monkeypatch.setattr("settings._application_data", lambda: {"delete": {"enabled": "false"}})
+    assert delete_enabled() is False
+    monkeypatch.setattr("settings._application_data", lambda: {})
+    assert delete_enabled() is True
+    from settings import backup_enabled, backup_interval_hours
+
+    monkeypatch.setattr(
+        "settings._application_data",
+        lambda: {"backup": {"enabled": "false", "interval_hours": "6"}},
+    )
+    assert backup_enabled() is False
+    assert backup_interval_hours() == 6
 
 
 def test_yfinance_slot():

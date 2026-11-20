@@ -2,46 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Notifications · Stock Buy Planner</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
 </head>
-<body class="md-app">
+<body class="md-app bento-app page-notifications">
   <div class="page">
     <nav class="nav md-navigation-bar" aria-label="Main">
-      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
-      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
-      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
-      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
-      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
-      <a href="/notifications" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
     </nav>
 
     <header class="header header-centered">
-      <p class="eyebrow">Email alerts</p>
-      <h1>Notifications</h1>
-      <p class="lede">
-        Get a monthly snapshot of your Progress holdings by email.
+      <p class="eyebrow" data-i18n="notifications.eyebrow">Email alerts</p>
+      <h1 data-i18n="notifications.title">Notifications</h1>
+      <p class="lede" data-i18n="notifications.lede">Get a monthly snapshot of your Progress holdings by email.</p>
+      <p class="account-crumb"><a href="/account" data-i18n="account.back">Back to account</a></p>
+      <p class="mail-off-note" id="mail-off-note" hidden data-i18n="notifications.smtpOff">
+        Monthly report emails are not sent while smtp.enabled is false. You can still use the app in the browser.
       </p>
     </header>
 
-    <main class="layout layout-notifications">
-      <form id="notifications-form" class="notifications-form">
+    <main class="bento-grid">
+      <form id="notifications-form" class="notifications-form bento-tile panel bento-span-center">
         <article class="notification-card" id="monthly-report-card">
           <header class="notification-card-titlebar">
-            <h2>Monthly report</h2>
+            <h2 data-i18n="notifications.monthly">Monthly report</h2>
           </header>
 
           <div class="notification-card-head">
             <span class="notification-icon material-symbols-outlined" aria-hidden="true">calendar_month</span>
             <div class="notification-card-copy">
-              <h3>Enable monthly report</h3>
-              <p>Same holdings and totals as your Progress page, delivered by email.</p>
+              <h3 data-i18n="notifications.enable">Enable monthly report</h3>
+              <p data-i18n="notifications.enableHint">Same holdings and totals as your Progress page, delivered by email.</p>
             </div>
             <label class="switch-wrap" for="monthly-report-toggle">
               <input id="monthly-report-toggle" type="checkbox" role="switch" aria-describedby="monthly-report-hint" />
@@ -50,28 +65,28 @@
           </div>
 
           <div class="notification-card-body" id="monthly-report-body">
-            <label for="report-email">
-              Delivery email
+            <label class="md-field" for="report-email">
               <input
                 id="report-email"
                 name="report_email"
                 type="email"
                 autocomplete="email"
-                placeholder="you@example.com"
+                placeholder=" "
               />
+              <span class="md-field-label" data-i18n="notifications.email">Delivery email</span>
             </label>
-            <p class="hint" id="monthly-report-hint">
+            <p class="md-field-support" id="monthly-report-hint" data-i18n="notifications.emailHint">
               Leave blank to use your account email.
             </p>
             <p class="schedule-note">
               <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
-              Sent on the 1st of each month at midnight.
+              <span data-i18n="notifications.schedule">Sent on the 1st of each month at midnight.</span>
             </p>
           </div>
         </article>
 
         <div class="notifications-actions">
-          <button type="submit" id="notifications-save-btn">Save preferences</button>
+          <button type="submit" id="notifications-save-btn" data-i18n="notifications.save">Save preferences</button>
         </div>
 
         <p id="notifications-status" class="ok" hidden></p>
@@ -80,7 +95,10 @@
     </main>
   </div>
 
-  <script src="/static/auth.js"></script>
-  <script src="/static/notifications.js"></script>
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/billing-ui.js?v=20261119b"></script>
+  <script src="/static/notifications.js?v=20261119b"></script>
 </body>
 </html>

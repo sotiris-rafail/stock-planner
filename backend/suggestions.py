@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from io import StringIO
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 import yfinance as yf
 
 from db import get_suggestion_cache, save_suggestion_cache
-from settings import silent_stock_refresh_minutes
+from settings import silent_stock_refresh_minutes, suggestion_refresh_hours
+from stooq import fetch_stooq_history_change, fetch_stooq_quote, to_stooq_symbol
 from yf_limit import yfinance_slot
 from suggestion_sources import (
     LIST_SOURCES,
@@ -30,7 +27,6 @@ from suggestion_sources import (
     selection_reason,
 )
 
-SYMBOL_REFRESH_HOURS = 4
 STOCK_PICKS_US = 50
 STOCK_PICKS_EU = 30
 ETF_PICKS = 30
@@ -72,65 +68,18 @@ def _normalize_currency(
 
 
 def _to_stooq_symbol(symbol: str) -> str | None:
-    raw = (symbol or "").strip()
-    if not raw:
-        return None
-    if "." in raw:
-        base, suffix = raw.rsplit(".", 1)
-        mapping = {
-            "DE": "de",
-            "L": "uk",
-            "PA": "pa",
-            "MI": "mi",
-            "MC": "mc",
-            "SW": "ch",
-            "AS": "nl",
-            "TO": "ca",
-            "HK": "hk",
-        }
-        stooq_suffix = mapping.get(suffix.upper())
-        if not stooq_suffix:
-            return None
-        return f"{base.lower()}.{stooq_suffix}"
-    return f"{raw.lower()}.us"
-
-
-def _http_get(url: str, timeout: float = 12.0) -> str:
-    req = Request(url, headers={"User-Agent": "StockBuyPlanner/1.2"})
-    with urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    return to_stooq_symbol(symbol)
 
 
 def _fetch_stooq_quote(stooq_symbol: str) -> dict[str, Any] | None:
-    try:
-        url = f"https://stooq.com/q/l/?s={stooq_symbol}&i=d"
-        text = _http_get(url)
-        rows = list(csv.reader(StringIO(text)))
-        if len(rows) < 2 or len(rows[1]) < 7 or rows[1][6] in ("", "N/D"):
-            return None
-        close = _safe_float(rows[1][6])
-        return {"price": close, "currency": None} if close is not None else None
-    except (URLError, TimeoutError, ValueError, csv.Error):
+    quote = fetch_stooq_quote(stooq_symbol)
+    if quote is None:
         return None
+    return {**quote, "currency": None}
 
 
 def _fetch_stooq_history_change(stooq_symbol: str, days: int = 183) -> float | None:
-    try:
-        url = f"https://stooq.com/q/d/l/?s={stooq_symbol}&i=d"
-        text = _http_get(url, timeout=15.0)
-        rows = list(csv.reader(StringIO(text)))
-        closes = [
-            v
-            for row in rows[1:]
-            if len(row) >= 5 and (v := _safe_float(row[4])) is not None
-        ]
-        if len(closes) < 2:
-            return None
-        window = closes[-min(len(closes), days) :]
-        p0, p1 = window[0], window[-1]
-        return (p1 / p0 - 1.0) * 100.0 if p0 else None
-    except (URLError, TimeoutError, ValueError, csv.Error):
-        return None
+    return fetch_stooq_history_change(stooq_symbol, days=days)
 
 
 def _yahoo_metrics(symbol: str) -> dict[str, Any]:
@@ -388,7 +337,8 @@ def _build_payload(
             "count": len(items),
         }
 
-    next_symbols = symbols_updated_at + timedelta(hours=SYMBOL_REFRESH_HOURS)
+    symbol_hours = suggestion_refresh_hours()
+    next_symbols = symbols_updated_at + timedelta(hours=symbol_hours)
     quote_refresh_minutes = silent_stock_refresh_minutes()
     next_quotes = quotes_updated_at + timedelta(minutes=quote_refresh_minutes)
 
@@ -398,7 +348,7 @@ def _build_payload(
         "quotes_updated_at": quotes_updated_at.isoformat(),
         "next_symbols_refresh_at": next_symbols.isoformat(),
         "next_quotes_refresh_at": next_quotes.isoformat(),
-        "symbol_refresh_hours": SYMBOL_REFRESH_HOURS,
+        "symbol_refresh_hours": symbol_hours,
         "quote_refresh_minutes": quote_refresh_minutes,
         "dynamic": True,
         "list_sources": list(LIST_SOURCES),
@@ -406,7 +356,7 @@ def _build_payload(
         "disclaimer": (
             "Suggestions are rebuilt from live index constituents (Wikipedia) and "
             "provider fund universes, then ranked by market data every "
-            f"{SYMBOL_REFRESH_HOURS} hours. Quotes refresh about every "
+            f"{symbol_hours} hours. Quotes refresh about every "
             f"{quote_refresh_minutes} minutes from Yahoo Finance with Stooq fallback. "
             "Not investment advice."
         ),
@@ -472,10 +422,11 @@ def build_suggestions(*, force: bool = False) -> dict[str, Any]:
             )
 
             quote_refresh_minutes = silent_stock_refresh_minutes()
-            if symbols_age_h < SYMBOL_REFRESH_HOURS and quotes_age_m < quote_refresh_minutes:
+            symbol_hours = suggestion_refresh_hours()
+            if symbols_age_h < symbol_hours and quotes_age_m < quote_refresh_minutes:
                 return payload
 
-            if symbols_age_h < SYMBOL_REFRESH_HOURS:
+            if symbols_age_h < symbol_hours:
                 payload = _refresh_quotes_only(payload, now)
             else:
                 payload = _full_rebuild(now)

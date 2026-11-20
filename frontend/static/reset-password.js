@@ -1,3 +1,4 @@
+const t = (key, vars) => (window.SbpI18n && window.SbpI18n.t(key, vars)) || key;
 const form = document.getElementById("reset-form");
 const passwordInput = document.getElementById("reset-password");
 const confirmInput = document.getElementById("reset-password-confirm");
@@ -12,9 +13,33 @@ function showError(message) {
 }
 
 if (!resetHash) {
-  showError("This reset link is missing its hash. Use the link from your email.");
+  showError(t("reset.missingHash") || "This reset link is missing its hash. Use the link from your email.");
   submitBtn.disabled = true;
 }
+
+async function applyEmailAvailability() {
+  try {
+    const data = window.SbpAppConfig?.fetch
+      ? await window.SbpAppConfig.fetch()
+      : await fetch("/api/config", { credentials: "include" }).then((r) => r.json());
+    const smtpOn = window.SbpI18n?.parseConfigFlag
+      ? window.SbpI18n.parseConfigFlag(data.smtp_enabled, false)
+      : data.smtp_enabled !== false;
+    if (smtpOn) return;
+    const note = document.getElementById("mail-off-note");
+    const lede = document.querySelector('[data-i18n="reset.lede"]');
+    const message = t("reset.smtpOff");
+    if (note) {
+      note.hidden = false;
+      note.textContent = message;
+    }
+    if (lede) lede.textContent = message;
+  } catch {
+    /* ignore */
+  }
+}
+
+applyEmailAvailability();
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -44,11 +69,11 @@ form?.addEventListener("submit", async (event) => {
       const detail = Array.isArray(data.detail)
         ? data.detail.map((item) => item.msg || item).join(", ")
         : data.detail;
-      throw new Error(detail || "Could not reset password");
+      throw new Error(detail || t("reset.failed"));
     }
     window.location.href = "/login";
   } catch (err) {
-    showError(err.message || "Could not reset password");
+    showError(err.message || t("reset.failed"));
   } finally {
     submitBtn.disabled = !resetHash;
     submitBtn.textContent = "Change password";

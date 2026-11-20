@@ -206,12 +206,35 @@ secret_key: ${APP_SECRET_KEY}
 # Value is loaded from the property key cron_job_silent_stock_refresh (default 15).
 cron_job: ${cron_job_silent_stock_refresh}
 
+# Suggestions symbol-universe rebuild interval in hours.
+# Value is loaded from the property key suggestion.refresh.time (default 4).
+suggestion_refresh: ${suggestion.refresh.time}
+
 smtp:
+  enabled: ${smtp.enabled}
   host: ${SMTP_HOST}
   port: ${SMTP_PORT}
   from: ${SMTP_FROM}
   user: ${SMTP_USER}
   password: ${SMTP_PASSWORD}
+
+# CSV export of holdings, lots, and watchlist.
+# Value is loaded from the property key export.enabled.
+export:
+  enabled: ${export.enabled}
+
+# Account deletion from the Account page.
+# Value is loaded from the property key delete.enabled.
+delete:
+  enabled: ${delete.enabled}
+
+# Periodic copy of the whole SQLite file (all accounts). Restore is CLI-only on this machine.
+# Values are loaded from backup.enabled, backup.interval.hours, backup.keep, backup.directory.
+backup:
+  enabled: ${backup.enabled}
+  interval_hours: ${backup.interval.hours}
+  keep: ${backup.keep}
+  directory: ${backup.directory}
 ```
 
 `properties.yml` — choose local file or HTTP:
@@ -228,10 +251,22 @@ provider:
 # provider:
 #   type: http
 #   url: https://your-config-host/properties
+#   token_url: https://your-config-host/auth/token
+#   client_id: your-client-id
+#   client_secret: your-client-secret
 #   timeout: 15
-#   headers:
-#     Authorization: Bearer your-token
 ```
+
+For HTTP/cloud, the app obtains a token then GETs `url`:
+
+1. **POST** `token_url` with JSON `{"clientId":"…","clientSecret":"…"}` (configure `client_id` / `client_secret`, or `username` / `password` as aliases).
+2. **GET** `url` with `Authorization: Bearer …` using `access_token` / `token` from the response.
+
+If `token_url` is omitted, `client_id` + `client_secret` (or username + password) use HTTP Basic auth on the config GET instead.
+
+Fetched WEB properties are kept in memory and refreshed at most every **`refresh_seconds`** (default **300**, i.e. 5 minutes). Changing `properties.yml` or the local fallback file on disk invalidates the HTTP cache; `application.yml` reloads within **30 seconds** when its files change.
+
+By default (`merge_local: true`), **`fallback_file`** (default **`values.yml`**) is merged under the remote map: keys from the config server win; local keys fill gaps. Set `merge_local: false` to use only the remote payload.
 
 `values.yml` — dummy local values (replace before production):
 
@@ -242,7 +277,15 @@ SMTP_PORT: 587
 SMTP_FROM: noreply@example.com
 SMTP_USER: smtp-user
 SMTP_PASSWORD: dummy-smtp-password
+smtp.enabled: false
+export.enabled: true
+delete.enabled: true
+backup.enabled: true
+backup.interval.hours: 24
+backup.keep: 14
+backup.directory: data/backups
 cron_job_silent_stock_refresh: 15
+suggestion.refresh.time: 4
 ```
 
 ## Pages
@@ -253,6 +296,17 @@ cron_job_silent_stock_refresh: 15
 
 Purchases are stored locally in `data/portfolio.db`.
 
+## Database backup
+
+When `backup.enabled` is true, the server writes copies under `data/backups` (or `backup.directory`). Users cannot restore from the app. On the machine that runs the code, stop the server, then:
+
+```bash
+python restore_db.py list
+python restore_db.py restore portfolio-YYYYMMDD-HHMMSS-xxxxxx.db
+```
+
+Start the app again after restore.
+
 ## Example
 
 - Ticker: `DTE.DE`
@@ -262,6 +316,15 @@ Purchases are stored locally in `data/portfolio.db`.
 → average monthly cash needed, plus projected growth over the 10-month period.
 
 Then each month, open **Progress**, log the shares you actually bought, and compare cost basis vs live value.
+
+## Product & Pro launch (in progress)
+
+Decision docs for a €1.99/month **Pro** tier (Phase 0):
+
+- [Positioning & pricing](docs/positioning.md)
+- [Free vs Pro entitlements](docs/entitlements.md)
+- [Hosting / Postgres for SaaS](docs/hosting.md)
+- [Release checklist](docs/release-plan.md)
 
 ## Notes
 

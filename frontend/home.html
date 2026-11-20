@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home · Stock Buy Planner</title>
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
+</head>
+<body class="md-app bento-app page-home">
+  <div class="page">
+    <nav class="nav md-navigation-bar" aria-label="Main">
+      <a href="/home" class="active" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
+    </nav>
+
+    <header class="header">
+      <p class="eyebrow" data-i18n="home.eyebrow">Overview</p>
+      <h1 data-i18n="home.title">Today at a glance</h1>
+      <p class="lede" data-i18n="home.lede">Markets that moved, watchlist alerts, and this month’s plan versus buys.</p>
+      <p class="data-chip" id="quote-status" hidden></p>
+    </header>
+
+    <main class="bento-grid" id="bento">
+      <section class="bento-tile bento-span-12 panel" id="home-start-card" hidden>
+        <div class="bento-tile-head">
+          <h2 data-i18n="home.startTitle">Get started</h2>
+        </div>
+        <div class="home-start">
+          <p class="muted" data-i18n="home.startLede">Three steps to fill this page: plan a buy, browse ideas, then track names you care about.</p>
+          <div class="home-start-actions">
+            <a href="/plan" data-i18n="home.startPlan">Plan a buy</a>
+            <a href="/ideas" data-i18n="home.startIdeas">Open Ideas</a>
+            <a href="/track" data-i18n="home.startTrack">Add to Track</a>
+          </div>
+        </div>
+      </section>
+      <section class="bento-tile bento-span-12 panel" id="home-briefing-card">
+        <div class="bento-tile-head">
+          <h2 data-i18n="home.briefing">This month</h2>
+          <a class="link-btn" href="/plan" data-i18n="home.thisMonthOpen">Open plan</a>
+        </div>
+        <p class="muted" id="home-briefing">Loading…</p>
+      </section>
+      <section class="bento-tile bento-progress panel">
+        <div class="bento-tile-head">
+          <h2 data-i18n="home.markets">Progress by market</h2>
+          <a class="link-btn" href="/progress" data-i18n="home.openProgress">Open Progress</a>
+        </div>
+        <div class="home-markets" id="home-markets">
+          <p class="muted">Loading…</p>
+        </div>
+      </section>
+
+      <section class="bento-tile bento-track panel">
+        <div class="bento-tile-head">
+          <h2 data-i18n="home.movers">Watchlist movers</h2>
+          <a class="link-btn" href="/track" data-i18n="home.openTrack">Open Track</a>
+        </div>
+        <ul class="bento-list" id="home-watchlist">
+          <li class="muted">Loading…</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/prefetch.js?v=20261104a"></script>
+  <script src="/static/list-tools.js?v=20261104a"></script>
+  <script src="/static/symbol-sheet.js?v=20261104d"></script>
+  <script src="/static/home.js?v=20261118a"></script>
+</body>
+</html>

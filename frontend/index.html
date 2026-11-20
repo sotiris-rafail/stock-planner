@@ -2,123 +2,151 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sbp:theme") || "dark";
+        var l = localStorage.getItem("sbp:lang") === "el" ? "el" : "en";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stock Buy Planner</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/static/favicon.svg?v=20261104a" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a" />
 </head>
-<body class="md-app">
+<body class="md-app bento-app page-plan">
   <div class="page">
     <nav class="nav md-navigation-bar" aria-label="Main">
-      <a href="/plan" class="active"><span class="material-symbols-outlined" aria-hidden="true">calculate</span>Plan</a>
-      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span>Progress</a>
-      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span>Dividend ideas</a>
-      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>Suggestions</a>
-      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span>Track</a>
-      <a href="/notifications" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">notifications</span>Notifications</a>
+      <a href="/home" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">grid_view</span><span data-i18n="nav.home">Home</span></a>
+      <a href="/plan" class="active"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span data-i18n="nav.plan">Plan</span></a>
+      <a href="/budget" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><span data-i18n="nav.budget">Budget</span></a>
+      <a href="/progress" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">trending_up</span><span data-i18n="nav.progress">Progress</span></a>
+      <a href="/ideas"><span class="material-symbols-outlined" aria-hidden="true">savings</span><span data-i18n="nav.ideas">Dividend ideas</span></a>
+      <a href="/suggestions"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span><span data-i18n="nav.suggestions">Suggestions</span></a>
+      <a href="/track" data-auth-required hidden><span class="material-symbols-outlined" aria-hidden="true">monitoring</span><span data-i18n="nav.track">Track</span></a>
     </nav>
 
     <header class="header">
-      <p class="eyebrow">Stock Buy Planner</p>
-      <h1 id="page-title">How much do you need each month?</h1>
-      <p class="lede" id="page-lede">
+      <p class="eyebrow" data-i18n="plan.eyebrow">Stock Buy Planner</p>
+      <h1 id="page-title" data-i18n="plan.title">How much do you need each month?</h1>
+      <p class="lede" id="page-lede" data-i18n="plan.lede">
         Pick a stock, set how many shares you want and over how many months.
         We pull a live price and estimate monthly growth from recent history.
       </p>
     </header>
 
-    <main class="layout">
-      <section class="panel form-panel">
+    <main class="bento-grid">
+      <section class="panel form-panel bento-tile bento-span-4">
         <form id="plan-form">
-          <label>
-            Ticker
-            <input id="symbol" name="symbol" type="text" value="DTE.DE" maxlength="20" required />
+          <label class="md-field">
+            <input id="symbol" name="symbol" type="text" value="DTE.DE" maxlength="20" placeholder=" " required />
+            <span class="md-field-label" data-i18n="plan.ticker">Ticker</span>
           </label>
 
-          <label class="check-label">
+          <div class="md-select" data-md-select>
+            <select id="price_source" name="price_source" data-i18n-aria="plan.priceSource" aria-label="Price source">
+              <option value="yahoo" data-i18n="common.yahoo">Yahoo Finance</option>
+              <option value="stooq" data-i18n="common.stooq">Stooq</option>
+            </select>
+          </div>
+
+          <label class="md-checkbox">
             <input id="yearly" name="yearly" type="checkbox" />
-            <span>Buy once per year</span>
+            <span class="md-checkbox-box" aria-hidden="true">
+              <span class="material-symbols-outlined">check</span>
+            </span>
+            <span data-i18n="plan.yearly">Buy once per year</span>
           </label>
 
           <div class="row">
-            <label>
-              Total shares
-              <input id="total_shares" name="total_shares" type="number" value="50" min="0.01" step="any" required />
+            <label class="md-field">
+              <input id="total_shares" name="total_shares" type="number" value="50" min="0.01" step="any" placeholder=" " required />
+              <span class="md-field-label" data-i18n="plan.shares">Total shares</span>
             </label>
-            <label>
-              <span id="periods-label">Months</span>
-              <input id="periods" name="periods" type="number" value="10" min="1" max="120" required />
+            <label class="md-field">
+              <input id="periods" name="periods" type="number" value="10" min="1" max="120" placeholder=" " required />
+              <span class="md-field-label" id="periods-label" data-i18n="plan.months">Months</span>
             </label>
           </div>
 
-          <label>
-            History lookback (months)
-            <input id="lookback_months" name="lookback_months" type="number" value="12" min="3" max="60" />
+          <label class="md-field">
+            <input id="lookback_months" name="lookback_months" type="number" value="12" min="3" max="60" placeholder=" " />
+            <span class="md-field-label" data-i18n="plan.lookback">History lookback (months)</span>
           </label>
 
-          <label>
-            <span id="growth-label">Growth override % / month</span>
-            <span class="hint">Leave blank to use historical estimate</span>
-            <input id="growth_override_pct" name="growth_override_pct" type="number" step="0.01" placeholder="e.g. 1.5" />
-          </label>
+          <div>
+            <label class="md-field">
+              <input id="growth_override_pct" name="growth_override_pct" type="number" step="0.01" placeholder=" " />
+              <span class="md-field-label" id="growth-label" data-i18n="plan.growth">Growth override % / month</span>
+            </label>
+            <p class="md-field-support" data-i18n="plan.growthHint">Leave blank to use historical estimate</p>
+          </div>
 
-          <button type="submit" id="submit-btn">Calculate plan</button>
+          <button type="submit" id="submit-btn" data-i18n="plan.submit">Calculate plan</button>
           <p id="form-error" class="error" hidden></p>
         </form>
       </section>
 
-      <section class="panel results-panel" id="results" hidden>
+      <section class="panel results-panel bento-tile bento-span-8" id="results" hidden>
         <div class="quote-bar" id="quote-bar"></div>
-
+        <div class="plan-followups" id="plan-followups" hidden></div>
         <div class="summary" id="summary"></div>
-
-        <div class="table-wrap">
+        <div class="table-wrap plan-schedule-table">
           <table>
             <thead>
               <tr>
-                <th id="period-col">Month</th>
-                <th>Price</th>
-                <th>Shares bought</th>
-                <th>Cost</th>
-                <th>Owned</th>
-                <th>Portfolio</th>
-                <th>Invested</th>
-                <th id="growth-col">Month growth</th>
-                <th>Accum. growth</th>
+                <th id="period-col" data-i18n="plan.month">Month</th>
+                <th data-i18n="plan.price">Price</th>
+                <th data-i18n="plan.sharesBought">Shares bought</th>
+                <th data-i18n="plan.cost">Cost</th>
+                <th data-i18n="plan.owned">Owned</th>
+                <th data-i18n="plan.portfolio">Portfolio</th>
+                <th data-i18n="plan.invested">Invested</th>
+                <th id="growth-col" data-i18n="plan.monthGrowth">Month growth</th>
+                <th data-i18n="plan.accumGrowth">Accum. growth</th>
               </tr>
             </thead>
             <tbody id="schedule-body"></tbody>
           </table>
         </div>
-
+        <div class="plan-schedule-cards" id="schedule-cards"></div>
         <details class="dividend-accordion" id="dividend-accordion">
           <summary>
-            <span class="accordion-title">Dividends</span>
-            <span class="accordion-hint" id="dividend-hint">Open to load yield and payout history</span>
+            <span class="accordion-title" data-i18n="plan.dividends">Dividends</span>
+            <span class="accordion-hint" id="dividend-hint" data-i18n="plan.divHint">Open to load yield and payout history</span>
           </summary>
           <div class="dividend-accordion-body" id="dividend-panel">
-            <p class="empty-copy">Open this section to load dividend data.</p>
+            <p class="empty-copy" data-i18n="plan.divOpen">Open this section to load dividend data.</p>
           </div>
         </details>
-
         <p class="disclaimer" id="disclaimer">
           Projections use live market data and a historical average monthly return.
           Past performance is not a guarantee of future results.
         </p>
       </section>
 
-      <section class="panel placeholder-panel" id="placeholder">
+      <section class="panel placeholder-panel bento-tile bento-span-8" id="placeholder">
         <p id="placeholder-copy">Enter a ticker and hit calculate. Defaults are set to Deutsche Telekom (<strong>DTE.DE</strong>): 50 shares over 10 months.</p>
       </section>
     </main>
   </div>
 
-  <script src="/static/auth.js"></script>
-  <script src="/static/prefetch.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app-config.js?v=20261109a"></script>
+  <script src="/static/ui.js?v=20261118a"></script>
+  <script src="/static/auth.js?v=20261118a"></script>
+  <script src="/static/prefetch.js?v=20261104a"></script>
+  <script src="/static/list-tools.js?v=20261104a"></script>
+  <script src="/static/symbol-sheet.js?v=20261104d"></script>
+  <script src="/static/md-select.js?v=20261104a"></script>
+  <script src="/static/app.js?v=20261104a"></script>
 </body>
 </html>
